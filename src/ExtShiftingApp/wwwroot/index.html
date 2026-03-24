@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ext-shifting</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
   <style>
     * { box-sizing: border-box; }
     body { font-family: sans-serif; margin: 0; background: #f5f5f5; }
@@ -75,17 +76,58 @@
   <!-- Developer tab -->
   <div id="developer" class="tab">
     <div class="card">
-      <h2>Developer tools coming soon</h2>
-      <p style="color:#888;font-size:0.9rem">Interactive M2 console and file runner will appear here.</p>
+      <h2>Interactive M2 Console</h2>
+      <div id="terminal" style="height:400px;background:#1a1a1a;border-radius:4px;padding:0.5rem;"></div>
+    </div>
+    <div class="card">
+      <h2>File runner — coming soon</h2>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <script>
+    let replInitialised = false;
+
     function showTab(name, btn) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
       document.getElementById(name).classList.add('active');
       btn.classList.add('active');
+      if (name === 'developer' && !replInitialised) initRepl();
+    }
+
+    function initRepl() {
+      replInitialised = true;
+      const term = new Terminal({ cursorBlink: true, theme: { background: '#1a1a1a' } });
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal'));
+      fitAddon.fit();
+
+      const ws = new WebSocket(`ws://${location.host}/repl`);
+      let inputBuffer = '';
+
+      ws.onopen = () => term.writeln('Connected to Macaulay2. Type commands below.\r\n');
+      ws.onclose = () => term.writeln('\r\n[connection closed]');
+      ws.onerror = () => term.writeln('\r\n[connection error]');
+      ws.onmessage = e => term.write(e.data);
+
+      term.onKey(({ key, domEvent }) => {
+        if (domEvent.key === 'Enter') {
+          ws.send(inputBuffer + '\n');
+          term.write('\r\n');
+          inputBuffer = '';
+        } else if (domEvent.key === 'Backspace') {
+          if (inputBuffer.length > 0) {
+            inputBuffer = inputBuffer.slice(0, -1);
+            term.write('\b \b');
+          }
+        } else {
+          inputBuffer += key;
+          term.write(key);
+        }
+      });
     }
 
     async function computeShift() {

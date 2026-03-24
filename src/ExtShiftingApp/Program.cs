@@ -1,4 +1,5 @@
 using ExtShiftingApp.M2;
+using ExtShiftingApp.Repl;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,7 @@ app.UseStaticFiles();
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapRepl();
 
 app.Run();
 

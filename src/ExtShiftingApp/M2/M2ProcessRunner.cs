@@ -23,6 +23,12 @@ public class M2ProcessRunner(IProcessFactory processFactory, string workingDirec
         return new M2Result(process.ExitCode == 0, output.ToString());
     }
 
+    public IInteractiveSession StartInteractiveSession()
+    {
+        var process = processFactory.Start("M2", "", workingDirectory, redirectStdin: true);
+        return new M2InteractiveSession(process);
+    }
+
     public async Task<M2Result> RunCommandAsync(
         string m2Code,
         Action<string>? onOutput = null,

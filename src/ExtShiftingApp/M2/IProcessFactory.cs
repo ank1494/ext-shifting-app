@@ -2,5 +2,5 @@ namespace ExtShiftingApp.M2;
 
 public interface IProcessFactory
 {
-    IRunningProcess Start(string executable, string arguments, string workingDirectory);
+    IRunningProcess Start(string executable, string arguments, string workingDirectory, bool redirectStdin = false);
 }

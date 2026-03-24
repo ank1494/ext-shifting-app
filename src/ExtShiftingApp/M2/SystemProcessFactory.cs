@@ -4,7 +4,7 @@ namespace ExtShiftingApp.M2;
 
 public class SystemProcessFactory : IProcessFactory
 {
-    public IRunningProcess Start(string executable, string arguments, string workingDirectory)
+    public IRunningProcess Start(string executable, string arguments, string workingDirectory, bool redirectStdin = false)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -13,6 +13,7 @@ public class SystemProcessFactory : IProcessFactory
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = redirectStdin,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
@@ -60,6 +61,13 @@ public class SystemRunningProcess : IRunningProcess
             _exited.TrySetCanceled();
         });
         await _exited.Task;
+    }
+
+    public Task SendInputAsync(string line, CancellationToken ct = default)
+    {
+        if (!_process.StartInfo.RedirectStandardInput)
+            throw new InvalidOperationException("Process was not started with stdin redirected.");
+        return _process.StandardInput.WriteLineAsync(line.AsMemory(), ct).AsTask();
     }
 
     public void Kill()
