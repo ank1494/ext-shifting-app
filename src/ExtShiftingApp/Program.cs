@@ -7,12 +7,14 @@ builder.Services.AddSingleton<IProcessFactory, SystemProcessFactory>();
 builder.Services.AddSingleton(_ => new M2ProcessRunner(
     new SystemProcessFactory(),
     workingDirectory: m2RepoPath));
+builder.Services.AddControllers();
 
 var app = builder.Build();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();

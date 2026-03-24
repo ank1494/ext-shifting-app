@@ -5,14 +5,125 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ext-shifting</title>
   <style>
-    body { font-family: sans-serif; max-width: 800px; margin: 4rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.5rem; }
-    .status { color: green; }
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; background: #f5f5f5; }
+    header { background: #1a1a2e; color: white; padding: 1rem 2rem; }
+    header h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    nav { display: flex; gap: 1rem; margin-top: 0.5rem; }
+    nav button { background: none; border: none; color: #aaa; cursor: pointer; font-size: 0.9rem; padding: 0.25rem 0; }
+    nav button.active { color: white; border-bottom: 2px solid white; }
+    .tab { display: none; padding: 2rem; max-width: 1000px; margin: 0 auto; }
+    .tab.active { display: block; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 0 0 1rem; }
+    .card { background: white; border-radius: 6px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.4rem; color: #444; }
+    textarea, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; }
+    textarea { resize: vertical; min-height: 80px; }
+    select { height: 2.2rem; }
+    button.primary { background: #1a1a2e; color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; margin-top: 1rem; }
+    button.primary:hover { background: #2a2a4e; }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .results { display: flex; gap: 1.5rem; margin-top: 1.5rem; }
+    .results > div { flex: 1; }
+    .result-box { background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 0.75rem; font-family: monospace; font-size: 0.9rem; min-height: 60px; white-space: pre-wrap; word-break: break-all; }
+    .error { color: #c0392b; font-size: 0.85rem; margin-top: 0.75rem; padding: 0.5rem; background: #fdf0f0; border-radius: 4px; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h1>ext-shifting app</h1>
-  <p class="status">App is running.</p>
-  <p>Macaulay2 calculations UI — coming soon.</p>
+  <header>
+    <h1>ext-shifting</h1>
+    <nav>
+      <button class="active" onclick="showTab('research', this)">Research</button>
+      <button onclick="showTab('developer', this)">Developer</button>
+    </nav>
+  </header>
+
+  <!-- Research tab -->
+  <div id="research" class="tab active">
+
+    <!-- One-off shifting -->
+    <div class="card">
+      <h2>Exterior Shifting</h2>
+      <label for="simplices">Simplices (e.g. <code>{{1,2},{1,3},{3,4}}</code>)</label>
+      <textarea id="simplices" placeholder="{{1,2},{1,3},{3,4}}"></textarea>
+
+      <label for="ordering" style="margin-top:0.75rem">Ordering</label>
+      <select id="ordering">
+        <option value="lex">Lex</option>
+        <option value="revlex">Rev-lex</option>
+      </select>
+
+      <button class="primary" id="compute-btn" onclick="computeShift()">Compute</button>
+
+      <div id="shift-error" class="error hidden"></div>
+
+      <div id="shift-results" class="results hidden">
+        <div>
+          <label>Input complex</label>
+          <div class="result-box" id="shift-input"></div>
+        </div>
+        <div>
+          <label>Exterior shifted complex</label>
+          <div class="result-box" id="shift-output"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Developer tab -->
+  <div id="developer" class="tab">
+    <div class="card">
+      <h2>Developer tools coming soon</h2>
+      <p style="color:#888;font-size:0.9rem">Interactive M2 console and file runner will appear here.</p>
+    </div>
+  </div>
+
+  <script>
+    function showTab(name, btn) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById(name).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    async function computeShift() {
+      const simplices = document.getElementById('simplices').value.trim();
+      const ordering = document.getElementById('ordering').value;
+      const btn = document.getElementById('compute-btn');
+      const errorEl = document.getElementById('shift-error');
+      const resultsEl = document.getElementById('shift-results');
+
+      btn.disabled = true;
+      btn.textContent = 'Computing…';
+      errorEl.classList.add('hidden');
+      resultsEl.classList.add('hidden');
+
+      try {
+        const resp = await fetch('/shift', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ simplices, ordering }),
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+          document.getElementById('shift-input').textContent = data.input;
+          document.getElementById('shift-output').textContent = data.output;
+          resultsEl.classList.remove('hidden');
+        } else {
+          errorEl.textContent = data.error ?? 'An unexpected error occurred.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch {
+        errorEl.textContent = 'Could not reach the server.';
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Compute';
+      }
+    }
+  </script>
 </body>
 </html>
