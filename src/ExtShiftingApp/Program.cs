@@ -1,3 +1,4 @@
+using ExtShiftingApp.Analysis;
 using ExtShiftingApp.Files;
 using ExtShiftingApp.M2;
 using ExtShiftingApp.Repl;
@@ -9,7 +10,11 @@ builder.Services.AddSingleton<IProcessFactory, SystemProcessFactory>();
 builder.Services.AddSingleton(_ => new M2ProcessRunner(
     new SystemProcessFactory(),
     workingDirectory: m2RepoPath));
+var outputPath = builder.Configuration["OUTPUT_PATH"] ?? "/output";
 builder.Services.AddSingleton(new FileSystemService(m2RepoPath));
+builder.Services.AddSingleton(sp => new AnalysisJobManager(
+    sp.GetRequiredService<M2ProcessRunner>(), m2RepoPath, outputPath));
+builder.Services.AddSingleton(m2RepoPath);
 builder.Services.AddControllers();
 
 var app = builder.Build();

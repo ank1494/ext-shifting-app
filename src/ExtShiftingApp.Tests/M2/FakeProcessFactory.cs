@@ -2,6 +2,46 @@ using ExtShiftingApp.M2;
 
 namespace ExtShiftingApp.Tests.M2;
 
+/// <summary>
+/// A process that blocks until Release() is called — useful for testing cancellation and concurrent-start prevention.
+/// </summary>
+public class ControllableFakeProcess : IRunningProcess
+{
+    private readonly TaskCompletionSource _gate = new();
+    public event EventHandler<string>? OutputReceived;
+    public event EventHandler<string>? ErrorReceived;
+    public int ExitCode { get; private set; }
+    public bool WasKilled { get; private set; }
+    public List<string> InputLines { get; } = [];
+
+    public void Release(int exitCode = 0, string output = "")
+    {
+        ExitCode = exitCode;
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            OutputReceived?.Invoke(this, line);
+        _gate.TrySetResult();
+    }
+
+    public void Kill() { WasKilled = true; _gate.TrySetCanceled(); }
+    public Task SendInputAsync(string line, CancellationToken ct = default) { InputLines.Add(line); return Task.CompletedTask; }
+    public async Task WaitForExitAsync(CancellationToken ct)
+    {
+        await using var _ = ct.Register(() => _gate.TrySetCanceled());
+        await _gate.Task;
+    }
+}
+
+public class ControllableFakeProcessFactory : IProcessFactory
+{
+    public ControllableFakeProcess? LastProcess { get; private set; }
+    public IRunningProcess Start(string executable, string arguments, string workingDirectory, bool redirectStdin = false)
+    {
+        LastProcess = new ControllableFakeProcess();
+        return LastProcess;
+    }
+}
+
+
 public class FakeProcessFactory(int exitCode, string output, string error) : IProcessFactory
 {
     public string? LastExecutable { get; private set; }

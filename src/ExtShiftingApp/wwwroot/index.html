@@ -71,6 +71,34 @@
       </div>
     </div>
 
+    <!-- Iterative analysis -->
+    <div class="card">
+      <h2>Iterative Analysis</h2>
+      <label for="run-name">Run name</label>
+      <input id="run-name" type="text" placeholder="my-analysis" style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:4px;font-size:0.9rem;margin-bottom:0.75rem;">
+
+      <label for="surface-type">Surface type</label>
+      <select id="surface-type" style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:4px;font-size:0.9rem;">
+        <option value="torus">Torus</option>
+        <option value="kleinbottle">Klein Bottle</option>
+        <option value="projectiveplane">Projective Plane</option>
+        <option value="custom">Custom file…</option>
+      </select>
+
+      <div id="custom-file-row" class="hidden" style="margin-top:0.75rem">
+        <label for="custom-file">Custom input file path (inside container)</label>
+        <input id="custom-file" type="text" placeholder="/m2/ext-shifting/my-input.m2" style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:4px;font-size:0.9rem;">
+      </div>
+
+      <div style="display:flex;gap:0.75rem;margin-top:1rem">
+        <button class="primary" id="analysis-start-btn" onclick="startAnalysis()" style="margin-top:0">Run Analysis</button>
+        <button class="primary" id="analysis-stop-btn" onclick="stopAnalysis()" style="margin-top:0;background:#c0392b;display:none">Stop</button>
+      </div>
+
+      <div id="analysis-status" style="font-size:0.85rem;color:#888;margin-top:0.75rem;"></div>
+      <div id="analysis-log" class="result-box hidden" style="margin-top:1rem;max-height:300px;overflow-y:auto;white-space:pre;font-size:0.8rem;"></div>
+    </div>
+
   </div>
 
   <!-- Developer tab -->
@@ -100,6 +128,72 @@
       document.getElementById(name).classList.add('active');
       btn.classList.add('active');
       if (name === 'developer' && !replInitialised) { initRepl(); initFileRunner(); }
+    }
+
+    document.getElementById('surface-type').addEventListener('change', e => {
+      document.getElementById('custom-file-row').classList.toggle('hidden', e.target.value !== 'custom');
+    });
+
+    async function startAnalysis() {
+      const runName = document.getElementById('run-name').value.trim();
+      const surfaceType = document.getElementById('surface-type').value;
+      const customFile = document.getElementById('custom-file').value.trim();
+      const log = document.getElementById('analysis-log');
+      const status = document.getElementById('analysis-status');
+
+      if (!runName) { alert('Enter a run name.'); return; }
+
+      const body = surfaceType === 'custom'
+        ? { runName, customFilePath: customFile }
+        : { runName, surfaceType };
+
+      const resp = await fetch('/analysis/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        status.textContent = '✗ ' + (err.error ?? 'Failed to start.');
+        status.style.color = '#c0392b';
+        return;
+      }
+
+      document.getElementById('analysis-start-btn').disabled = true;
+      document.getElementById('analysis-stop-btn').style.display = '';
+      log.textContent = '';
+      log.classList.remove('hidden');
+      status.style.color = '#888';
+
+      const es = new EventSource('/analysis/stream');
+      es.onmessage = e => {
+        const data = JSON.parse(e.data);
+        log.textContent += data.line + '\n';
+        log.scrollTop = log.scrollHeight;
+        status.textContent = `Iteration ${data.iteration ?? '…'} in progress…`;
+      };
+      es.onerror = () => {
+        es.close();
+        refreshAnalysisStatus();
+      };
+    }
+
+    async function stopAnalysis() {
+      await fetch('/analysis/stop', { method: 'POST' });
+      refreshAnalysisStatus();
+    }
+
+    async function refreshAnalysisStatus() {
+      const st = await fetch('/analysis/status').then(r => r.json());
+      const status = document.getElementById('analysis-status');
+      const startBtn = document.getElementById('analysis-start-btn');
+      const stopBtn = document.getElementById('analysis-stop-btn');
+      startBtn.disabled = st.status === 'Running';
+      stopBtn.style.display = st.status === 'Running' ? '' : 'none';
+      if (st.status === 'Complete') { status.textContent = '✓ Analysis complete.'; status.style.color = 'green'; }
+      if (st.status === 'Failed')   { status.textContent = '✗ Analysis failed: ' + (st.error ?? ''); status.style.color = '#c0392b'; }
+      if (st.status === 'Idle')     { status.textContent = 'Stopped.'; status.style.color = '#888'; }
     }
 
     async function initFileRunner() {

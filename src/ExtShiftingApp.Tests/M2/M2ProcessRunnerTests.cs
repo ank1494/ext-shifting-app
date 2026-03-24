@@ -53,4 +53,15 @@ public class M2ProcessRunnerTests
         Assert.Contains("libs.m2", fake.LastArguments);
         Assert.Equal("/m2/ext-shifting", fake.LastWorkingDirectory);
     }
+
+    [Fact]
+    public async Task RunScriptAsync_QuotesPathsWithSpaces()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var runner = new M2ProcessRunner(fake, workingDirectory: "/m2");
+
+        await runner.RunScriptAsync("/m2/analyze triangs.m2");
+
+        Assert.Equal("--script \"/m2/analyze triangs.m2\"", fake.LastArguments);
+    }
 }

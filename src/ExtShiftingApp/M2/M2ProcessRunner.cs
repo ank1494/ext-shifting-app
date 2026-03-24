@@ -9,7 +9,7 @@ public class M2ProcessRunner(IProcessFactory processFactory, string workingDirec
     {
         var output = new System.Text.StringBuilder();
 
-        var process = processFactory.Start("M2", $"--script {scriptPath}", workingDirectory);
+        var process = processFactory.Start("M2", $"--script \"{scriptPath}\"", workingDirectory);
 
         process.OutputReceived += (_, line) =>
         {
