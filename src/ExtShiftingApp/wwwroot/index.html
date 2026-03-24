@@ -80,7 +80,12 @@
       <div id="terminal" style="height:400px;background:#1a1a1a;border-radius:4px;padding:0.5rem;"></div>
     </div>
     <div class="card">
-      <h2>File runner — coming soon</h2>
+      <h2>File Runner</h2>
+      <label for="file-select">Select a .m2 file</label>
+      <select id="file-select"><option value="">Loading files…</option></select>
+      <button class="primary" id="run-btn" onclick="runFile()" disabled>Run</button>
+      <div id="run-status" style="font-size:0.8rem;margin-top:0.5rem;color:#888;"></div>
+      <div id="run-output" class="result-box hidden" style="margin-top:1rem;max-height:300px;overflow-y:auto;white-space:pre;"></div>
     </div>
   </div>
 
@@ -94,7 +99,59 @@
       document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
       document.getElementById(name).classList.add('active');
       btn.classList.add('active');
-      if (name === 'developer' && !replInitialised) initRepl();
+      if (name === 'developer' && !replInitialised) { initRepl(); initFileRunner(); }
+    }
+
+    async function initFileRunner() {
+      const select = document.getElementById('file-select');
+      const runBtn = document.getElementById('run-btn');
+      try {
+        const files = await fetch('/files').then(r => r.json());
+        select.innerHTML = files.map(f => `<option value="${f}">${f}</option>`).join('');
+        runBtn.disabled = false;
+      } catch {
+        select.innerHTML = '<option>Failed to load files</option>';
+      }
+    }
+
+    async function runFile() {
+      const file = document.getElementById('file-select').value;
+      const runBtn = document.getElementById('run-btn');
+      const output = document.getElementById('run-output');
+      const status = document.getElementById('run-status');
+
+      runBtn.disabled = true;
+      output.textContent = '';
+      output.classList.remove('hidden');
+      status.textContent = 'Running…';
+
+      const resp = await fetch('/files/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file }),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
+        for (const event of events) {
+          if (!event.startsWith('data:')) continue;
+          const data = JSON.parse(event.slice(5).trim());
+          if (data.type === 'output') output.textContent += data.line + '\n';
+          if (data.type === 'done') {
+            status.textContent = data.success ? '✓ Completed successfully' : '✗ Completed with errors';
+            status.style.color = data.success ? 'green' : '#c0392b';
+          }
+        }
+      }
+      runBtn.disabled = false;
     }
 
     function initRepl() {
