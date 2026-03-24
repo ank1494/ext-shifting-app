@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Analysis output is saved here — change the left side to any folder on your machine
+      - ./output:/output
+      # Developer override: uncomment to use a local clone of ext-shifting instead of the submodule
+      # - ../ext-shifting:/m2/ext-shifting
+    environment:
+      - M2_REPO_PATH=/m2/ext-shifting
+      - OUTPUT_PATH=/output

@@ -1,0 +1,3 @@
+[submodule "m2/ext-shifting"]
+	path = m2/ext-shifting
+	url = https://github.com/ank1494/ext-shifting.git

@@ -1,0 +1,12 @@
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+app.Run();
+
+// Needed for test project access
+public partial class Program { }
