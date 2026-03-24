@@ -97,6 +97,7 @@
 
       <div id="analysis-status" style="font-size:0.85rem;color:#888;margin-top:0.75rem;"></div>
       <div id="analysis-log" class="result-box hidden" style="margin-top:1rem;max-height:300px;overflow-y:auto;white-space:pre;font-size:0.8rem;"></div>
+      <button class="primary" id="download-csv-btn" style="margin-top:0.75rem;display:none" onclick="downloadCsv()">Download CSV</button>
     </div>
 
   </div>
@@ -191,9 +192,20 @@
       const stopBtn = document.getElementById('analysis-stop-btn');
       startBtn.disabled = st.status === 'Running';
       stopBtn.style.display = st.status === 'Running' ? '' : 'none';
-      if (st.status === 'Complete') { status.textContent = '✓ Analysis complete.'; status.style.color = 'green'; }
+      if (st.status === 'Complete') {
+        status.textContent = '✓ Analysis complete.';
+        status.style.color = 'green';
+        const btn = document.getElementById('download-csv-btn');
+        btn.style.display = '';
+        btn.dataset.runName = st.runName;
+      }
       if (st.status === 'Failed')   { status.textContent = '✗ Analysis failed: ' + (st.error ?? ''); status.style.color = '#c0392b'; }
       if (st.status === 'Idle')     { status.textContent = 'Stopped.'; status.style.color = '#888'; }
+    }
+
+    function downloadCsv() {
+      const runName = document.getElementById('download-csv-btn').dataset.runName;
+      window.location.href = `/analysis/results/${encodeURIComponent(runName)}/csv`;
     }
 
     async function initFileRunner() {

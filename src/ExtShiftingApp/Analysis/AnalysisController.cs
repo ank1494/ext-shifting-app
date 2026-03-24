@@ -84,6 +84,39 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
         }
     }
 
+    [HttpGet("/analysis/results/{runName}/csv")]
+    public IActionResult Csv(string runName)
+    {
+        var runDir = Path.Combine(m2RepoPath, "analysis output", runName);
+        if (!Directory.Exists(runDir))
+            return NotFound(new { error = $"No results found for run '{runName}'." });
+
+        var iterationDirs = Directory.GetDirectories(runDir, "iteration_*")
+            .Select(d => (dir: d, n: int.TryParse(Path.GetFileName(d).Replace("iteration_", ""), out var n) ? n : 0))
+            .Where(x => x.n > 0)
+            .OrderBy(x => x.n)
+            .ToList();
+
+        if (iterationDirs.Count == 0)
+            return NotFound(new { error = "No iteration results found." });
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("iteration,critical_regions,largest_non_prefix_vertices,converged");
+
+        foreach (var (dir, n) in iterationDirs)
+        {
+            var summaryPath = Path.Combine(dir, "Analysis Summary.txt");
+            if (!System.IO.File.Exists(summaryPath)) continue;
+
+            var summary = SummaryParser.Parse(n, System.IO.File.ReadAllText(summaryPath));
+            var regions = summary.CriticalRegions.Replace(",", ";"); // avoid CSV collision
+            sb.AppendLine($"{summary.Iteration},{regions},{summary.LargestNonPrefixVertices},{summary.Converged.ToString().ToLower()}");
+        }
+
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
+            "text/csv", $"{runName}-results.csv");
+    }
+
     [HttpGet("/analysis/results/{iteration:int}")]
     public IActionResult Results(int iteration, [FromQuery] string runName)
     {
