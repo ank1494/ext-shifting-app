@@ -67,7 +67,7 @@ public class SystemRunningProcess : IRunningProcess
     {
         if (!_process.StartInfo.RedirectStandardInput)
             throw new InvalidOperationException("Process was not started with stdin redirected.");
-        return _process.StandardInput.WriteLineAsync(line.AsMemory(), ct).AsTask();
+        return _process.StandardInput.WriteLineAsync(line.AsMemory(), ct);
     }
 
     public void Kill()
