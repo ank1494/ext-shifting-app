@@ -10,6 +10,8 @@ That's it.
 
 ## Setup
 
+Make sure Docker Desktop is running before proceeding.
+
 ```bash
 git clone --recurse-submodules https://github.com/ank1494/ext-shifting-app.git
 cd ext-shifting-app
