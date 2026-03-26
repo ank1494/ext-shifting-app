@@ -9,3 +9,4 @@
 
 - **Paste not working in Developer tab terminal** `[small] [mid]`: Pasting text into the xterm.js REPL terminal does not work. Input must be typed manually.
 - **Show absolute path in iterative analysis** `[small] [low]`: When running iterative analysis, the file path shown in the log is relative. It is unclear what the full path resolves to on the host.
+- **REPL silent failure on unquoted load** `[small] [low]`: Typing `load filename.m2` without quotes in the Developer tab REPL produces no error and no output, making it appear the file loaded when it did not. Small because this is a UX hint or thin input validation in the frontend with no backend changes needed.
