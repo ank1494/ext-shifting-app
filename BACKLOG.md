@@ -4,9 +4,14 @@
 
 - **Iterative analysis panel lacks observability** `[medium] [high]`: The iterative analysis panel provides limited visibility into M2's internal state during a run, making it difficult to diagnose issues or understand computation progress without external tooling. The stream only forwards M2's stdout (`print` statements); stderr, and the `Analysis Log.txt` and `Exceptions Log.txt` files M2 writes to disk, are not surfaced. Spans backend and frontend but no architectural overhaul — the data already exists and needs to be exposed.
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
+- **Integration tests (Docker + M2)** `[medium] [mid]`: No test suite exercises the full stack with a real M2 process inside Docker. Explicitly deferred in the PRD; M2 calculation correctness is covered by the ext-shifting codebase, but the integration seam is untested.
+- **Macaulay2 package publication** `[large] [mid]`: The ext-shifting M2 code is bundled as a git submodule; it has not been published as a proper Macaulay2 package. Noted as a future goal in the PRD with architectural implications for how the Docker image bundles M2 code.
+- **Output visualisation** `[medium] [low]`: The shifted complex is displayed as a list; there is no graphical rendering. Noted as future work in the PRD.
+- **Graphical complex input** `[large] [low]`: No mechanism for users to specify a simplicial complex by drawing it — input is text-only. Identified in the PRD as a valuable future feature; the data model should not preclude this approach.
 
 ## Small
 
+- **Docker installPackage migration** `[small] [mid]`: Once the ext-shifting M2 code is published as a Macaulay2 package, the Dockerfile should install it via `installPackage` rather than bundling source. Depends on Macaulay2 package publication.
 - **QA: Verify Klein Bottle and Projective Plane surface types** `[small] [mid]`: Section 6.5 of the QA plan (Klein Bottle and Projective Plane iterative analysis) has not yet been tested. Deferred until M2 code is confirmed stable. When ready, run iterative analysis for both surface types and confirm they start and stream output without errors.
 - **QA: Verify custom file path surface type** `[small] [mid]`: Section 6.6 of the QA plan (Custom surface type with a user-supplied `.m2` path) has not yet been tested. Deferred until M2 code is confirmed stable. When ready, select Custom, enter a valid `.m2` path inside the container, and confirm the job starts and streams output.
 - **QA: Verify CSV export** `[small] [mid]`: Slice 7 (CSV download via UI and API, 404 for unknown run, field correctness) has not yet been tested. Deferred until a full iterative analysis run completes cleanly. When ready, run sections 7.1–7.4 of the QA plan.
