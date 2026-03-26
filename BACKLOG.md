@@ -2,6 +2,7 @@
 
 ## Large / Medium
 
+- **Iterative analysis panel lacks observability** `[medium] [high]`: The iterative analysis panel provides limited visibility into M2's internal state during a run, making it difficult to diagnose issues or understand computation progress without external tooling. The stream only forwards M2's stdout (`print` statements); stderr, and the `Analysis Log.txt` and `Exceptions Log.txt` files M2 writes to disk, are not surfaced. Spans backend and frontend but no architectural overhaul — the data already exists and needs to be exposed.
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
 ## Small
