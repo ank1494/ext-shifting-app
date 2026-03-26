@@ -182,6 +182,9 @@
 
     async function stopAnalysis() {
       await fetch('/analysis/stop', { method: 'POST' });
+      const log = document.getElementById('analysis-log');
+      log.textContent = '';
+      log.classList.add('hidden');
       refreshAnalysisStatus();
     }
 

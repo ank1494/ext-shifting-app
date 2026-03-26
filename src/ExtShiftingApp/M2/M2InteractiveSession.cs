@@ -11,6 +11,8 @@ public class M2InteractiveSession(IRunningProcess process) : IInteractiveSession
     public Task SendInputAsync(string line, CancellationToken ct = default)
         => process.SendInputAsync(line, ct);
 
+    public void Dispose() => process.Kill();
+
     public ValueTask DisposeAsync()
     {
         process.Kill();

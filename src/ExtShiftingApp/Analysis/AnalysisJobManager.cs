@@ -33,7 +33,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     public void Stop() => _cts?.Cancel();
 
-    internal Task WaitAsync() => _runTask;
+    public Task WaitAsync() => _runTask;
 
     private async Task RunLoopAsync(string runName, string inputFilePath, CancellationToken ct)
     {
