@@ -5,6 +5,10 @@
   - **Output line timestamps (M2 + app layer)** `[medium] [mid]`: M2 output lines carry no timing information, making it impossible to distinguish real-time streaming from a burst of output at process exit. This prevents verification that the buffered-output fix is actually working. Two timestamp sources are needed: M2-side (when the line was emitted) and C# side (when `OutputReceived` fired), surfaced through the SSE stream and displayed in the live log.
   - **Logging gaps in ext-shifting M2 code** `[small] [mid]`: The ext-shifting Macaulay2 codebase has limited logging, making it difficult to trace computation steps or diagnose failures. Gaps in what is printed to stdout reduce the observability surfaced through the app's streaming output.
 
+- **Test coverage** `[medium] [high]`: The codebase has no automated tests for key logic paths or full-stack behavior. Correctness of iterative analysis steps and the Docker/M2 integration seam are both unverified.
+  - **Iterative analysis unit/integration tests** `[medium] [high]`: The iterative analysis loop has no automated tests that exercise intermediate steps. Given a known triangulation (e.g. an eight-vertex triangulation of the torus), a test should select one non-critical split whose edge shifting is not yet a prefix, repeat, and assert termination within a surface-dependent vertex bound N. N must be confirmed per surface before the assertion can be written.
+  - **Integration tests (Docker + M2)** `[medium] [mid]`: No test suite exercises the full stack with a real M2 process inside Docker. Explicitly deferred in the PRD; M2 calculation correctness is covered by the ext-shifting codebase, but the integration seam is untested.
+
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
 - **Macaulay2 package lifecycle** `[large] [mid]`: The ext-shifting M2 code is not yet published as a proper Macaulay2 package; the Docker image currently bundles source rather than installing a published package.
@@ -12,8 +16,6 @@
   - **Docker installPackage migration** `[small] [mid]`: Once the ext-shifting M2 code is published as a Macaulay2 package, the Dockerfile should install it via `installPackage` rather than bundling source. Depends on Macaulay2 package publication.
 
 - **Run name conflicts on restart** `[medium] [mid]`: When starting an analysis with a run name that already has on-disk state from a previous run, the behavior is undefined — output directories may conflict, iteration counters may be stale, and errors may occur mid-run. Spans job lifecycle management on the C# side and may require UI affordances for cleaning up or reusing old runs.
-
-- **Integration tests (Docker + M2)** `[medium] [mid]`: No test suite exercises the full stack with a real M2 process inside Docker. Explicitly deferred in the PRD; M2 calculation correctness is covered by the ext-shifting codebase, but the integration seam is untested.
 
 - **QA: Deferred verifications** `[small] [mid]`: Several QA plan sections remain untested, deferred pending M2 code stability and a clean iterative analysis run.
   - **QA: Verify Klein Bottle and Projective Plane surface types** `[small] [mid]`: Section 6.5 of the QA plan (Klein Bottle and Projective Plane iterative analysis) has not yet been tested. Deferred until M2 code is confirmed stable. When ready, run iterative analysis for both surface types and confirm they start and stream output without errors.
