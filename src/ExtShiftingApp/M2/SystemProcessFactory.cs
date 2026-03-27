@@ -13,13 +13,13 @@ public class SystemProcessFactory : IProcessFactory
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            RedirectStandardInput = redirectStdin,
+            RedirectStandardInput = true, // always redirect; closed immediately for script mode so M2 gets EOF rather than blocking
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        return new SystemRunningProcess(process);
+        return new SystemRunningProcess(process, isInteractive: redirectStdin);
     }
 }
 
@@ -27,13 +27,15 @@ public class SystemRunningProcess : IRunningProcess
 {
     private readonly Process _process;
     private readonly TaskCompletionSource _exited = new();
+    private readonly bool _isInteractive;
 
     public event EventHandler<string>? OutputReceived;
     public event EventHandler<string>? ErrorReceived;
     public int ExitCode => _process.ExitCode;
 
-    public SystemRunningProcess(Process process)
+    public SystemRunningProcess(Process process, bool isInteractive = false)
     {
+        _isInteractive = isInteractive;
         _process = process;
 
         _process.OutputDataReceived += (_, e) =>
@@ -49,6 +51,8 @@ public class SystemRunningProcess : IRunningProcess
         _process.Exited += (_, _) => _exited.TrySetResult();
 
         _process.Start();
+        if (!isInteractive)
+            _process.StandardInput.Close(); // give the child process EOF so it cannot block on stdin reads
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
     }
@@ -65,8 +69,8 @@ public class SystemRunningProcess : IRunningProcess
 
     public Task SendInputAsync(string line, CancellationToken ct = default)
     {
-        if (!_process.StartInfo.RedirectStandardInput)
-            throw new InvalidOperationException("Process was not started with stdin redirected.");
+        if (!_isInteractive)
+            throw new InvalidOperationException("Process was not started in interactive mode.");
         return _process.StandardInput.WriteLineAsync(line.AsMemory(), ct);
     }
 
