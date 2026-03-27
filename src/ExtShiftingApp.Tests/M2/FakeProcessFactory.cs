@@ -22,6 +22,7 @@ public class ControllableFakeProcess : IRunningProcess
         _gate.TrySetResult();
     }
 
+    public void EmitOutput(string line) => OutputReceived?.Invoke(this, line);
     public void Kill() { WasKilled = true; _gate.TrySetCanceled(); }
     public Task SendInputAsync(string line, CancellationToken ct = default) { InputLines.Add(line); return Task.CompletedTask; }
     public async Task WaitForExitAsync(CancellationToken ct)

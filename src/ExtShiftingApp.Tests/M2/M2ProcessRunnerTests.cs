@@ -64,4 +64,30 @@ public class M2ProcessRunnerTests
 
         Assert.Equal("--script \"/m2/analyze triangs.m2\"", fake.LastArguments);
     }
+
+    [Fact]
+    public async Task RunScriptAsync_OutputCallbackFiresBeforeProcessExits()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var runner = new M2ProcessRunner(factory, workingDirectory: "/m2");
+        var received = new List<string>();
+        var firstLineReceived = new TaskCompletionSource();
+
+        var runTask = runner.RunScriptAsync("/m2/script.m2", onOutput: line =>
+        {
+            received.Add(line);
+            firstLineReceived.TrySetResult();
+        });
+
+        // Emit a progress line before the process exits
+        factory.LastProcess!.EmitOutput("analyzing 1 of 3");
+
+        await firstLineReceived.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(["analyzing 1 of 3"], received);
+        Assert.False(runTask.IsCompleted);
+
+        factory.LastProcess.Release(exitCode: 0);
+        await runTask;
+    }
 }
