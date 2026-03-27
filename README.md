@@ -44,3 +44,69 @@ This replaces the bundled submodule with your local clone of ext-shifting.
 cd src
 dotnet test
 ```
+
+## API reference
+
+All endpoints are on `http://localhost:5000`.
+
+### Start an analysis run
+
+```bash
+# Built-in surface type (torus | kleinbottle | projectiveplane)
+curl -s -X POST http://localhost:5000/analysis/start \
+  -H "Content-Type: application/json" \
+  -d '{"runName": "my-run", "surfaceType": "torus"}'
+
+# Custom M2 file path
+curl -s -X POST http://localhost:5000/analysis/start \
+  -H "Content-Type: application/json" \
+  -d '{"runName": "my-run", "customFilePath": "/m2/ext-shifting/my-input.m2"}'
+```
+
+### Check run status
+
+```bash
+curl -s http://localhost:5000/analysis/status
+```
+
+Returns JSON with `runName`, `status` (`Idle` | `Running` | `Complete` | `Failed`), `currentIteration`, and `error`.
+
+### Stream live output (Server-Sent Events)
+
+```bash
+curl -s -N http://localhost:5000/analysis/stream
+```
+
+Replays the existing log then streams new lines until the run finishes or you cancel (`Ctrl+C`).
+
+### Get results for a specific iteration
+
+```bash
+curl -s "http://localhost:5000/analysis/results/3?runName=my-run"
+```
+
+Omit `runName` to use the currently active run.
+
+### Download all results as CSV
+
+```bash
+curl -s http://localhost:5000/analysis/results/my-run/csv -o my-run-results.csv
+```
+
+### Stop a running analysis
+
+```bash
+curl -s -X POST http://localhost:5000/analysis/stop
+```
+
+### Other endpoints
+
+```bash
+# List available M2 files
+curl -s http://localhost:5000/files
+
+# Run an M2 file (streams output as SSE)
+curl -s -N -X POST http://localhost:5000/files/run \
+  -H "Content-Type: application/json" \
+  -d '{"file": "my-script.m2"}'
+```
