@@ -5,11 +5,15 @@ public class M2ProcessRunner(IProcessFactory processFactory, string workingDirec
     public async Task<M2Result> RunScriptAsync(
         string scriptPath,
         Action<string>? onOutput = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? scriptArgs = null)
     {
         var output = new System.Text.StringBuilder();
+        var args = string.IsNullOrEmpty(scriptArgs)
+            ? $"--script \"{scriptPath}\""
+            : $"--script \"{scriptPath}\" {scriptArgs}";
 
-        var process = processFactory.Start("M2", $"--script \"{scriptPath}\"", workingDirectory);
+        var process = processFactory.Start("M2", args, workingDirectory);
 
         process.OutputReceived += (_, line) =>
         {

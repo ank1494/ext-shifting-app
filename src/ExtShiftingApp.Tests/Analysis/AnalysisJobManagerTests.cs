@@ -123,6 +123,32 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_WritesConfigToOutputDirectory()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.False(File.Exists(Path.Combine(_m2Dir, "analysis config.m2")));
+        Assert.True(File.Exists(Path.Combine(_outDir, "my-run", "analysis config.m2")));
+    }
+
+    [Fact]
+    public async Task Start_PassesConfigPathAsM2Argument()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        var expectedConfigPath = Path.Combine(_outDir, "my-run", "analysis config.m2");
+        Assert.Contains(expectedConfigPath, fake.LastArguments);
+    }
+
+    [Fact]
     public async Task Start_BroadcastsOutputLines()
     {
         var fake = new FakeProcessFactory(exitCode: 0, output: "line1\nno more splits to calculate", error: "");
