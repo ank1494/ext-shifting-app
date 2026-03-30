@@ -64,4 +64,31 @@ public class M2ProcessRunnerTests
 
         Assert.Equal("--script \"/m2/analyze triangs.m2\"", fake.LastArguments);
     }
+
+    [Fact]
+    public async Task RunScriptAsync_LargeOutput_CapsOutputToRecentLines()
+    {
+        // 200 lines with zero-padded unambiguous markers
+        var manyLines = string.Join("\n", Enumerable.Range(1, 200).Select(i => $"marker-{i:D3}"));
+        var fake = new FakeProcessFactory(exitCode: 2, output: "", error: manyLines);
+        var runner = new M2ProcessRunner(fake, workingDirectory: "/m2");
+
+        var result = await runner.RunScriptAsync("/m2/script.m2");
+
+        Assert.Contains("marker-200", result.Output);    // recent lines kept
+        Assert.DoesNotContain("marker-001", result.Output); // oldest lines dropped
+    }
+
+    [Fact]
+    public async Task RunScriptAsync_BroadcastsStderrLines()
+    {
+        var fake = new FakeProcessFactory(exitCode: 1, output: "", error: "err1\nerr2");
+        var runner = new M2ProcessRunner(fake, workingDirectory: "/m2");
+        var received = new List<string>();
+
+        await runner.RunScriptAsync("/m2/script.m2", onOutput: line => received.Add(line));
+
+        Assert.Contains("err1", received);
+        Assert.Contains("err2", received);
+    }
 }

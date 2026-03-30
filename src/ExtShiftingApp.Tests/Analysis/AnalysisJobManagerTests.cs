@@ -185,6 +185,18 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_UnexpectedExitCode_TransitionsToFailed()
+    {
+        var fake = new FakeProcessFactory(exitCode: 99, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Failed, manager.GetState().Status);
+    }
+
+    [Fact]
     public async Task Start_BroadcastsOutputLines()
     {
         var fake = new FakeProcessFactory(exitCode: 0, output: "line1", error: "");

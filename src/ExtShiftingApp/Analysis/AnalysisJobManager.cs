@@ -47,14 +47,16 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
                 var result = await m2.RunScriptAsync(scriptPath, onOutput: Broadcast, ct: ct, scriptArgs: $"\"{configPath}\"");
 
-                if (result.ExitCode == 2)
+                if (result.ExitCode == 0)
+                {
+                    converged = true;
+                }
+                else if (result.ExitCode != 1)
                 {
                     _state = _state with { Status = JobStatus.Failed, Error = result.Output };
                     PersistState();
                     return;
                 }
-
-                converged = result.ExitCode == 0;
             }
 
             _state = _state with { Status = ct.IsCancellationRequested ? JobStatus.Idle : JobStatus.Complete };
