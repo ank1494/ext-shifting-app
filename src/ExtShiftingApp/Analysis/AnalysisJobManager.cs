@@ -4,8 +4,6 @@ namespace ExtShiftingApp.Analysis;
 
 public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string outputPath)
 {
-    private const string ConvergedMarker = "no more splits to calculate";
-
     private JobState _state = JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
@@ -49,14 +47,14 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
                 var result = await m2.RunScriptAsync(scriptPath, onOutput: Broadcast, ct: ct, scriptArgs: $"\"{configPath}\"");
 
-                if (!result.Success)
+                if (result.ExitCode == 2)
                 {
                     _state = _state with { Status = JobStatus.Failed, Error = result.Output };
                     PersistState();
                     return;
                 }
 
-                converged = result.Output.Contains(ConvergedMarker);
+                converged = result.ExitCode == 0;
             }
 
             _state = _state with { Status = ct.IsCancellationRequested ? JobStatus.Idle : JobStatus.Complete };

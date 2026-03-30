@@ -24,7 +24,7 @@ public class M2ProcessRunner(IProcessFactory processFactory, string workingDirec
 
         await process.WaitForExitAsync(ct);
 
-        return new M2Result(process.ExitCode == 0, output.ToString());
+        return new M2Result(process.ExitCode == 0, output.ToString(), process.ExitCode);
     }
 
     public IInteractiveSession StartInteractiveSession()

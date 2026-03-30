@@ -73,7 +73,7 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
             EventHandler<string> handler = async (_, line) =>
             {
                 await WriteEvent(line, ct);
-                if (line.Contains("no more splits") || ct.IsCancellationRequested)
+                if (ct.IsCancellationRequested)
                     tcs.TrySetResult();
             };
 
