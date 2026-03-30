@@ -13,8 +13,8 @@ public class AnalysisJobManagerTests : IDisposable
     {
         Directory.CreateDirectory(_m2Dir);
         Directory.CreateDirectory(_outDir);
-        // analyze triangs.m2 must exist for RunScriptAsync to find it
-        File.WriteAllText(Path.Combine(_m2Dir, "analyze triangs.m2"), "");
+        Directory.CreateDirectory(Path.Combine(_m2Dir, "scripts"));
+        File.WriteAllText(Path.Combine(_m2Dir, "scripts", "analyzeTriangs.m2"), "");
     }
 
     public void Dispose()
@@ -108,6 +108,18 @@ public class AnalysisJobManagerTests : IDisposable
 
         Assert.Equal(2, manager.GetState().CurrentIteration);
         Assert.Equal(JobStatus.Complete, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Start_InvokesM2WithScriptsAnalyzeTriangsPath()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Contains(Path.Combine("scripts", "analyzeTriangs.m2"), fake.LastArguments);
     }
 
     [Fact]

@@ -8,9 +8,9 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
 {
     private static readonly Dictionary<string, string> SurfaceInputFiles = new()
     {
-        ["torus"]          = "surface triangulations/irred tori.m2",
-        ["kleinbottle"]    = "surface triangulations/irred kb.m2",
-        ["projectiveplane"]= "surface triangulations/irred pp.m2",
+        ["torus"]          = "data/surface triangulations/irredTori.m2",
+        ["kleinbottle"]    = "data/surface triangulations/irredKb.m2",
+        ["projectiveplane"]= "data/surface triangulations/irredPp.m2",
     };
 
     [HttpPost("/analysis/start")]
