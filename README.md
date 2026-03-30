@@ -49,6 +49,9 @@ dotnet test
 
 All endpoints are on `http://localhost:5000`.
 
+> **Windows CMD users:** The examples below use single quotes, which only work in bash (Git Bash, WSL) and PowerShell. In Command Prompt, replace `'...'` with `"..."` and escape inner quotes with `\"`, e.g. `-d "{\"runName\": \"my-run\"}"`.
+
+
 ### Start an analysis run
 
 ```bash

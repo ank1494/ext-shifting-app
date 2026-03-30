@@ -13,8 +13,8 @@ public class AnalysisJobManagerTests : IDisposable
     {
         Directory.CreateDirectory(_m2Dir);
         Directory.CreateDirectory(_outDir);
-        // analyze triangs.m2 must exist for RunScriptAsync to find it
-        File.WriteAllText(Path.Combine(_m2Dir, "analyze triangs.m2"), "");
+        Directory.CreateDirectory(Path.Combine(_m2Dir, "scripts"));
+        File.WriteAllText(Path.Combine(_m2Dir, "scripts", "runAnalysis.m2"), "");
     }
 
     public void Dispose()
@@ -32,7 +32,7 @@ public class AnalysisJobManagerTests : IDisposable
     [Fact]
     public async Task Start_CompletedJob_TransitionsToComplete()
     {
-        var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
         var manager = Build(fake);
 
         manager.Start("my-run", "/input/tori.m2");
@@ -51,14 +51,14 @@ public class AnalysisJobManagerTests : IDisposable
 
         Assert.Throws<InvalidOperationException>(() => manager.Start("run2", "/input/tori.m2"));
 
-        factory.LastProcess!.Release(0, "no more splits to calculate");
+        factory.LastProcess!.Release(0, "");
         await manager.WaitAsync();
     }
 
     [Fact]
     public async Task Start_M2Failure_TransitionsToFailed()
     {
-        var fake = new FakeProcessFactory(exitCode: 1, output: "", error: "M2 crashed");
+        var fake = new FakeProcessFactory(exitCode: 2, output: "", error: "M2 crashed");
         var manager = Build(fake);
 
         manager.Start("my-run", "/input/tori.m2");
@@ -84,7 +84,7 @@ public class AnalysisJobManagerTests : IDisposable
     [Fact]
     public async Task Start_PersistsStateToDisk()
     {
-        var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
         var manager = Build(fake);
 
         manager.Start("my-run", "/input/tori.m2");
@@ -97,10 +97,8 @@ public class AnalysisJobManagerTests : IDisposable
     [Fact]
     public async Task Start_IterationCounterIncrementsPerRun()
     {
-        // First iteration: no convergence. Second iteration: converged.
-        var callCount = 0;
-        var outputs = new[] { "still going", "no more splits to calculate" };
-        var factory = new MultiResponseFakeProcessFactory(outputs);
+        // First iteration: exit 1 (needs another). Second iteration: exit 0 (converged).
+        var factory = new MultiResponseExitCodeFactory([1, 0]);
         var manager = new AnalysisJobManager(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
 
         manager.Start("my-run", "/input/tori.m2");
@@ -111,9 +109,97 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_InvokesM2WithScriptsRunAnalysisPath()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Contains(Path.Combine("scripts", "runAnalysis.m2"), fake.LastArguments);
+    }
+
+    [Fact]
+    public async Task Start_WritesConfigToOutputDirectory()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.False(File.Exists(Path.Combine(_m2Dir, "analysis config.m2")));
+        Assert.True(File.Exists(Path.Combine(_outDir, "my-run", "analysis config.m2")));
+    }
+
+    [Fact]
+    public async Task Start_PassesConfigPathAsM2Argument()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        var expectedConfigPath = Path.Combine(_outDir, "my-run", "analysis config.m2");
+        Assert.Contains(expectedConfigPath, fake.LastArguments);
+    }
+
+    [Fact]
+    public async Task Start_ExitCode0_Converged_TransitionsToComplete()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Start_ExitCode1_NeedsAnotherIteration_LoopsContinues()
+    {
+        // exit 1 first, then exit 0 to converge
+        var factory = new MultiResponseExitCodeFactory([1, 0]);
+        var manager = new AnalysisJobManager(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(2, manager.GetState().CurrentIteration);
+        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Start_ExitCode2_Error_TransitionsToFailed()
+    {
+        var fake = new FakeProcessFactory(exitCode: 2, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Failed, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Start_UnexpectedExitCode_TransitionsToFailed()
+    {
+        var fake = new FakeProcessFactory(exitCode: 99, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Failed, manager.GetState().Status);
+    }
+
+    [Fact]
     public async Task Start_BroadcastsOutputLines()
     {
-        var fake = new FakeProcessFactory(exitCode: 0, output: "line1\nno more splits to calculate", error: "");
+        var fake = new FakeProcessFactory(exitCode: 0, output: "line1", error: "");
         var manager = Build(fake);
         var received = new List<string>();
         manager.Subscribe((_, line) => received.Add(line));
@@ -134,5 +220,17 @@ public class MultiResponseFakeProcessFactory(string[] outputs) : IProcessFactory
         var output = _callIndex < outputs.Length ? outputs[_callIndex] : outputs[^1];
         _callIndex++;
         return new FakeProcess(0, output, "");
+    }
+}
+
+/// <summary>Cycles through a list of exit codes, one per process invocation.</summary>
+public class MultiResponseExitCodeFactory(int[] exitCodes) : IProcessFactory
+{
+    private int _callIndex;
+    public IRunningProcess Start(string executable, string arguments, string workingDirectory, bool redirectStdin = false)
+    {
+        var code = _callIndex < exitCodes.Length ? exitCodes[_callIndex] : exitCodes[^1];
+        _callIndex++;
+        return new FakeProcess(code, "", "");
     }
 }

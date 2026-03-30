@@ -4,8 +4,6 @@ namespace ExtShiftingApp.Analysis;
 
 public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string outputPath)
 {
-    private const string ConvergedMarker = "no more splits to calculate";
-
     private JobState _state = JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
@@ -39,24 +37,26 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     {
         try
         {
-            var scriptPath = Path.Combine(m2RepoPath, "analyze triangs.m2");
+            var scriptPath = Path.Combine(m2RepoPath, "scripts", "runAnalysis.m2");
             bool converged = false;
 
             while (!converged && !ct.IsCancellationRequested)
             {
                 _state = _state with { CurrentIteration = _state.CurrentIteration + 1 };
-                WriteConfig(runName, inputFilePath);
+                var configPath = WriteConfig(runName, inputFilePath);
 
-                var result = await m2.RunScriptAsync(scriptPath, onOutput: Broadcast, ct: ct);
+                var result = await m2.RunScriptAsync(scriptPath, onOutput: Broadcast, ct: ct, scriptArgs: $"\"{configPath}\"");
 
-                if (!result.Success)
+                if (result.ExitCode == 0)
+                {
+                    converged = true;
+                }
+                else if (result.ExitCode != 1)
                 {
                     _state = _state with { Status = JobStatus.Failed, Error = result.Output };
                     PersistState();
                     return;
                 }
-
-                converged = result.Output.Contains(ConvergedMarker);
             }
 
             _state = _state with { Status = ct.IsCancellationRequested ? JobStatus.Idle : JobStatus.Complete };
@@ -81,13 +81,17 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
             handler(this, line);
     }
 
-    private void WriteConfig(string runName, string inputFilePath)
+    private string WriteConfig(string runName, string inputFilePath)
     {
+        var runDir = Path.Combine(outputPath, runName);
+        Directory.CreateDirectory(runDir);
+        var configPath = Path.Combine(runDir, "analysis config.m2");
         var config = $"""
             analysisName = "{runName}"
             analysisInputFile = "{inputFilePath}"
             """;
-        File.WriteAllText(Path.Combine(m2RepoPath, "analysis config.m2"), config);
+        File.WriteAllText(configPath, config);
+        return configPath;
     }
 
     private void PersistState()
