@@ -39,7 +39,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     {
         try
         {
-            var scriptPath = Path.Combine(m2RepoPath, "scripts", "analyzeTriangs.m2");
+            var scriptPath = Path.Combine(m2RepoPath, "scripts", "runAnalysis.m2");
             bool converged = false;
 
             while (!converged && !ct.IsCancellationRequested)

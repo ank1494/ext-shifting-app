@@ -14,7 +14,7 @@ public class AnalysisJobManagerTests : IDisposable
         Directory.CreateDirectory(_m2Dir);
         Directory.CreateDirectory(_outDir);
         Directory.CreateDirectory(Path.Combine(_m2Dir, "scripts"));
-        File.WriteAllText(Path.Combine(_m2Dir, "scripts", "analyzeTriangs.m2"), "");
+        File.WriteAllText(Path.Combine(_m2Dir, "scripts", "runAnalysis.m2"), "");
     }
 
     public void Dispose()
@@ -111,7 +111,7 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_InvokesM2WithScriptsAnalyzeTriangsPath()
+    public async Task Start_InvokesM2WithScriptsRunAnalysisPath()
     {
         var fake = new FakeProcessFactory(exitCode: 0, output: "no more splits to calculate", error: "");
         var manager = Build(fake);
@@ -119,7 +119,7 @@ public class AnalysisJobManagerTests : IDisposable
         manager.Start("my-run", "/input/tori.m2");
         await manager.WaitAsync();
 
-        Assert.Contains(Path.Combine("scripts", "analyzeTriangs.m2"), fake.LastArguments);
+        Assert.Contains(Path.Combine("scripts", "runAnalysis.m2"), fake.LastArguments);
     }
 
     [Fact]
