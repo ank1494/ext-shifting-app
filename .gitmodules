@@ -1,4 +1,4 @@
 [submodule "m2/ext-shifting"]
 	path = m2/ext-shifting
 	url = https://github.com/ank1494/ext-shifting.git
-	branch = fix/claude_initial_cleanup
+	branch = main
