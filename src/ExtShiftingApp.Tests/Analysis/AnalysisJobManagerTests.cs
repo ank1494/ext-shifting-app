@@ -15,6 +15,7 @@ public class AnalysisJobManagerTests : IDisposable
         Directory.CreateDirectory(_outDir);
         Directory.CreateDirectory(Path.Combine(_m2Dir, "scripts"));
         File.WriteAllText(Path.Combine(_m2Dir, "scripts", "runAnalysis.m2"), "");
+        File.WriteAllText(Path.Combine(_m2Dir, "scripts", "runQueue.m2"), "");
     }
 
     public void Dispose()
@@ -69,7 +70,7 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task Stop_CancelsRunningJob_TransitionsToIdle()
+    public async Task Stop_CancelsRunningJob_TransitionsToPaused()
     {
         var factory = new ControllableFakeProcessFactory();
         var manager = Build(factory);
@@ -78,7 +79,7 @@ public class AnalysisJobManagerTests : IDisposable
         manager.Stop();
         await manager.WaitAsync();
 
-        Assert.Equal(JobStatus.Idle, manager.GetState().Status);
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
     }
 
     [Fact]
@@ -95,21 +96,7 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_IterationCounterIncrementsPerRun()
-    {
-        // First iteration: exit 1 (needs another). Second iteration: exit 0 (converged).
-        var factory = new MultiResponseExitCodeFactory([1, 0]);
-        var manager = new AnalysisJobManager(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
-
-        manager.Start("my-run", "/input/tori.m2");
-        await manager.WaitAsync();
-
-        Assert.Equal(2, manager.GetState().CurrentIteration);
-        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
-    }
-
-    [Fact]
-    public async Task Start_InvokesM2WithScriptsRunAnalysisPath()
+    public async Task Start_InvokesM2WithScriptsRunQueuePath()
     {
         var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
         var manager = Build(fake);
@@ -117,7 +104,7 @@ public class AnalysisJobManagerTests : IDisposable
         manager.Start("my-run", "/input/tori.m2");
         await manager.WaitAsync();
 
-        Assert.Contains(Path.Combine("scripts", "runAnalysis.m2"), fake.LastArguments);
+        Assert.Contains(Path.Combine("scripts", "runQueue.m2"), fake.LastArguments);
     }
 
     [Fact]
@@ -159,20 +146,6 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_ExitCode1_NeedsAnotherIteration_LoopsContinues()
-    {
-        // exit 1 first, then exit 0 to converge
-        var factory = new MultiResponseExitCodeFactory([1, 0]);
-        var manager = new AnalysisJobManager(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
-
-        manager.Start("my-run", "/input/tori.m2");
-        await manager.WaitAsync();
-
-        Assert.Equal(2, manager.GetState().CurrentIteration);
-        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
-    }
-
-    [Fact]
     public async Task Start_ExitCode2_Error_TransitionsToFailed()
     {
         var fake = new FakeProcessFactory(exitCode: 2, output: "", error: "");
@@ -208,6 +181,109 @@ public class AnalysisJobManagerTests : IDisposable
         await manager.WaitAsync();
 
         Assert.Contains("line1", received);
+    }
+
+    // --- Queue-based manager tests (issue #49) ---
+
+    [Fact]
+    public async Task Start_InvokesRunQueueNotRunAnalysis()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Contains(Path.Combine("scripts", "runQueue.m2"), fake.LastArguments ?? "");
+    }
+
+    [Fact]
+    public async Task Start_PassesBatchParamsToRunQueue()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+        var batch = new BatchParameters(ItemCap: 5, MaxVertexCount: 12, Timeout: TimeSpan.FromSeconds(30));
+
+        manager.Start("my-run", "/input/tori.m2", batch);
+        await manager.WaitAsync();
+
+        Assert.Contains("5", fake.LastArguments ?? "");
+        Assert.Contains("12", fake.LastArguments ?? "");
+        Assert.Contains("30", fake.LastArguments ?? "");
+    }
+
+    [Fact]
+    public async Task Stop_TransitionsToPaused_NotIdle()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        manager.Start("my-run", "/input/tori.m2");
+        manager.Stop();
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Resume_TransitionsFromPausedToRunning_ThenComplete()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        // Start and stop to reach Paused
+        manager.Start("my-run", "/input/tori.m2");
+        manager.Stop();
+        await manager.WaitAsync();
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+
+        // Resume — fake process completes immediately
+        var resumeFake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager2 = new AnalysisJobManager(new M2ProcessRunner(resumeFake, _m2Dir), _m2Dir, _outDir);
+        // Seed state as paused
+        manager2.SetPausedState("my-run");
+        manager2.Resume("my-run");
+        await manager2.WaitAsync();
+
+        Assert.Equal(JobStatus.Complete, manager2.GetState().Status);
+    }
+
+    [Fact]
+    public async Task PollingTimer_BroadcastsQueueState_WhenCountsChange()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+        var received = new List<string>();
+        manager.Subscribe((_, line) => received.Add(line));
+
+        // Seed a run directory with a pending file so QueueStateReader returns non-zero counts
+        var runDir = Path.Combine(_outDir, "my-run");
+        Directory.CreateDirectory(Path.Combine(runDir, "pending"));
+        Directory.CreateDirectory(Path.Combine(runDir, "done"));
+        File.WriteAllText(Path.Combine(runDir, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("my-run", "/input/tori.m2");
+        manager.FirePollForTest();
+        await manager.WaitAsync();
+
+        Assert.Contains(received, line => line.Contains("queue_state"));
+    }
+
+    [Fact]
+    public async Task PollingTimer_DoesNotBroadcast_WhenCountsUnchanged()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+        var received = new List<string>();
+        manager.Subscribe((_, line) => received.Add(line));
+
+        manager.Start("my-run", "/input/tori.m2");
+        manager.FirePollForTest(); // first poll — establishes baseline
+        manager.FirePollForTest(); // second poll — same counts, should NOT broadcast
+        await manager.WaitAsync();
+
+        Assert.Equal(1, received.Count(line => line.Contains("queue_state")));
     }
 }
 
