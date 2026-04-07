@@ -19,6 +19,9 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     public void Subscribe(EventHandler<string> handler) => _subscribers.Add(handler);
     public void Unsubscribe(EventHandler<string> handler) => _subscribers.Remove(handler);
 
+    public bool RunExists(string runName) =>
+        Directory.Exists(Path.Combine(outputPath, runName));
+
     public void Start(string runName, string inputFilePath, BatchParameters? batch = null)
     {
         if (_state.Status == JobStatus.Running)

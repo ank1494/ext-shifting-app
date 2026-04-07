@@ -34,10 +34,30 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
             return BadRequest(new { error = "Provide either surfaceType or customFilePath." });
         }
 
+        if (jobManager.RunExists(request.RunName))
+            return Conflict(new { error = $"A run named '{request.RunName}' already exists." });
+
         try
         {
-            jobManager.Start(request.RunName, inputFilePath);
+            jobManager.Start(request.RunName, inputFilePath, request.Batch);
             return Ok(new { started = true, runName = request.RunName });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("/analysis/resume")]
+    public IActionResult Resume([FromBody] ResumeAnalysisRequest request)
+    {
+        if (!jobManager.RunExists(request.RunName))
+            return NotFound(new { error = $"No run named '{request.RunName}' exists." });
+
+        try
+        {
+            jobManager.Resume(request.RunName, request.Batch);
+            return Ok(new { resumed = true, runName = request.RunName });
         }
         catch (InvalidOperationException ex)
         {
@@ -142,4 +162,5 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     }
 }
 
-public record StartAnalysisRequest(string RunName, string? SurfaceType, string? CustomFilePath);
+public record StartAnalysisRequest(string RunName, string? SurfaceType, string? CustomFilePath, BatchParameters? Batch = null);
+public record ResumeAnalysisRequest(string RunName, BatchParameters? Batch = null);
