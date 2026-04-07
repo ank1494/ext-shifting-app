@@ -156,7 +156,7 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
 
     private async Task WriteEvent(string line, CancellationToken ct)
     {
-        var json = JsonSerializer.Serialize(new { line });
+        var json = SseEventParser.Parse(line);
         await Response.WriteAsync($"data: {json}\n\n", ct);
         await Response.Body.FlushAsync(ct);
     }
