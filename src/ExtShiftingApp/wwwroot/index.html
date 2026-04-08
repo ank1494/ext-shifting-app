@@ -170,9 +170,20 @@
       const es = new EventSource('/analysis/stream');
       es.onmessage = e => {
         const data = JSON.parse(e.data);
-        log.textContent += data.line + '\n';
+        if (data.type === 'm2_output') {
+          log.textContent += data.line + '\n';
+        } else if (data.type === 'item_started') {
+          log.textContent += `→ item ${data.item} (depth ${data.depth})\n`;
+        } else if (data.type === 'item_done') {
+          log.textContent += `✓ item ${data.item} — ${data.splits} split(s)\n`;
+        } else if (data.type === 'queue_state') {
+          status.textContent = `Running — ${data.pendingCount} pending, ${data.doneCount} done`;
+        } else if (data.type === 'run_paused') {
+          status.textContent = 'Paused.';
+        } else if (data.type === 'run_complete') {
+          status.textContent = 'Complete.';
+        }
         log.scrollTop = log.scrollHeight;
-        status.textContent = `Iteration ${data.iteration ?? '…'} in progress…`;
       };
       es.onerror = () => {
         es.close();

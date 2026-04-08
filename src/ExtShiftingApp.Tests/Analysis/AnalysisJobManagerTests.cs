@@ -121,6 +121,20 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_ConfigContainsAbsoluteAnalysisOutputDir()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        var config = File.ReadAllText(Path.Combine(_outDir, "my-run", "analysis config.m2"));
+        var expectedRunDir = Path.Combine(_outDir, "my-run");
+        Assert.Contains($"analysisOutputDir = \"{expectedRunDir}\"", config);
+    }
+
+    [Fact]
     public async Task Start_PassesConfigPathAsM2Argument()
     {
         var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");

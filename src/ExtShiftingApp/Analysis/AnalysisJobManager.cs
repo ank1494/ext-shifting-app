@@ -119,7 +119,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         var inputLine = inputFilePath is not null
             ? $"\nanalysisInputFile = \"{inputFilePath}\""
             : "";
-        File.WriteAllText(configPath, $"analysisName = \"{runName}\"{inputLine}");
+        File.WriteAllText(configPath, $"analysisName = \"{runName}\"\nanalysisOutputDir = \"{runDir}\"{inputLine}");
         return configPath;
     }
 
