@@ -54,6 +54,8 @@ All endpoints are on `http://localhost:5000`.
 
 ### Start an analysis run
 
+Returns 409 Conflict if a run with that name already exists.
+
 ```bash
 # Built-in surface type (torus | kleinbottle | projectiveplane)
 curl -s -X POST http://localhost:5000/analysis/start \
@@ -64,6 +66,24 @@ curl -s -X POST http://localhost:5000/analysis/start \
 curl -s -X POST http://localhost:5000/analysis/start \
   -H "Content-Type: application/json" \
   -d '{"runName": "my-run", "customFilePath": "/m2/ext-shifting/my-input.m2"}'
+
+# With batch caps (all optional — omit any you don't need)
+curl -s -X POST http://localhost:5000/analysis/start \
+  -H "Content-Type: application/json" \
+  -d '{"runName": "my-run", "surfaceType": "torus", "batch": {"itemCap": 10, "maxVertexCount": 8, "timeout": "00:30:00"}}'
+```
+
+### Resume a paused run
+
+```bash
+curl -s -X POST http://localhost:5000/analysis/resume \
+  -H "Content-Type: application/json" \
+  -d '{"runName": "my-run"}'
+
+# With batch caps
+curl -s -X POST http://localhost:5000/analysis/resume \
+  -H "Content-Type: application/json" \
+  -d '{"runName": "my-run", "batch": {"itemCap": 20}}'
 ```
 
 ### Check run status
@@ -72,7 +92,7 @@ curl -s -X POST http://localhost:5000/analysis/start \
 curl -s http://localhost:5000/analysis/status
 ```
 
-Returns JSON with `runName`, `status` (`Idle` | `Running` | `Complete` | `Failed`), `currentIteration`, and `error`.
+Returns JSON with `runName`, `status` (`Idle` | `Running` | `Paused` | `Complete` | `Failed`), `currentIteration`, `pendingCount`, `doneCount`, `currentItemDepth`, and `error`.
 
 ### Stream live output (Server-Sent Events)
 
@@ -80,7 +100,7 @@ Returns JSON with `runName`, `status` (`Idle` | `Running` | `Complete` | `Failed
 curl -s -N http://localhost:5000/analysis/stream
 ```
 
-Replays the existing log then streams new lines until the run finishes or you cancel (`Ctrl+C`).
+Replays the existing log then streams new lines until the run finishes or you cancel (`Ctrl+C`). Each event has a `type` field: `m2_output` for raw M2 lines; `item_started`, `item_done`, `splits_added`, `run_paused`, and `queue_state` for structured lifecycle events.
 
 ### Get results for a specific iteration
 
