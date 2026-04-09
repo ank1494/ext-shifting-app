@@ -262,6 +262,49 @@ public class AnalysisJobManagerTests : IDisposable
         Assert.Equal(JobStatus.Complete, manager2.GetState().Status);
     }
 
+    // --- Bug #58: Resume() stale state ---
+
+    [Fact]
+    public async Task Resume_UpdatesRunName()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        manager.Start("run-A", "/input/tori.m2");
+        manager.Stop();
+        factory.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+
+        var resumeFake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager2 = new AnalysisJobManager(new M2ProcessRunner(resumeFake, _m2Dir), _m2Dir, _outDir);
+        manager2.SetPausedState("run-A");
+        manager2.Resume("run-B");
+        await manager2.WaitAsync();
+
+        Assert.Equal("run-B", manager2.GetState().RunName);
+    }
+
+    [Fact]
+    public async Task Resume_ClearsOutputLog()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        // Run to completion so the output log has lines
+        manager.Start("run-A", "/input/tori.m2");
+        factory.LastProcess!.Release(0, "old output");
+        await manager.WaitAsync();
+        manager.SetPausedState("run-A");
+        Assert.True(manager.GetOutputLog().Count > 0, "Precondition: log should have lines");
+
+        // Resume — factory creates a new blocking process; log should be cleared before it runs
+        manager.Resume("run-A");
+        Assert.Equal(0, manager.GetOutputLog().Count);
+
+        factory.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+    }
+
     // --- Bug #56: run_paused event ---
 
     [Fact]

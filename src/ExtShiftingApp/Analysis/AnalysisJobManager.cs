@@ -46,8 +46,10 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         if (_state.Status != JobStatus.Paused)
             throw new InvalidOperationException("Job is not paused.");
 
+        _outputLog.Clear();
+        _runPausedSeen = false;
         _cts = new CancellationTokenSource();
-        _state = _state with { Status = JobStatus.Running };
+        _state = _state with { RunName = runName, Status = JobStatus.Running };
         PersistState();
         _runTask = RunQueueAsync(runName, inputFilePath: null, batch ?? new BatchParameters(), _cts.Token);
     }
