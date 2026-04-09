@@ -305,6 +305,24 @@ public class AnalysisJobManagerTests : IDisposable
         await manager.WaitAsync();
     }
 
+    // --- Bug #57: EVENT lines routed via stderr ---
+
+    [Fact]
+    public async Task Start_EventLinesOnStderr_AreBroadcast()
+    {
+        // Simulates M2 emitting EVENT: lines via stderr (unbuffered channel)
+        var fake = new FakeProcessFactory(exitCode: 0, output: "",
+            error: "EVENT:{\"type\":\"item_started\",\"item\":\"0001\",\"depth\":0,\"parent\":\"\"}");
+        var manager = Build(fake);
+        var received = new List<string>();
+        manager.Subscribe((_, line) => received.Add(line));
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Contains(received, line => line.Contains("item_started"));
+    }
+
     // --- Bug #59: state recovery on restart ---
 
     [Fact]
