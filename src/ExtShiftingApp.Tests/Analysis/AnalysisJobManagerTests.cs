@@ -305,6 +305,71 @@ public class AnalysisJobManagerTests : IDisposable
         await manager.WaitAsync();
     }
 
+    // --- Bug #60: periodic Poll() timer ---
+
+    [Fact]
+    public async Task PollingTimer_AutoFires_DuringRun_WithoutManualFirePoll()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromMilliseconds(30));
+        var received = new List<string>();
+        manager.Subscribe((_, line) => received.Add(line));
+
+        var runDir = Path.Combine(_outDir, "my-run");
+        Directory.CreateDirectory(Path.Combine(runDir, "pending"));
+        Directory.CreateDirectory(Path.Combine(runDir, "done"));
+        File.WriteAllText(Path.Combine(runDir, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        // Use a blocking process so the timer has time to fire before the run ends
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager2 = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromMilliseconds(30));
+        manager2.Subscribe((_, line) => received.Add(line));
+
+        var runDir2 = Path.Combine(_outDir, "run2");
+        Directory.CreateDirectory(Path.Combine(runDir2, "pending"));
+        File.WriteAllText(Path.Combine(runDir2, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager2.Start("run2", "/input/tori.m2");
+        await Task.Delay(100); // allow timer to fire at least once
+        blockingFake.LastProcess!.Release(0, "");
+        await manager2.WaitAsync();
+
+        Assert.Contains(received, line => line.Contains("queue_state"));
+    }
+
+    [Fact]
+    public async Task PollingTimer_StopsAfterRunEnds()
+    {
+        var blockingFake = new ControllableFakeProcessFactory();
+        var received = new List<string>();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromMilliseconds(30));
+        manager.Subscribe((_, line) => received.Add(line));
+
+        var runDir = Path.Combine(_outDir, "run-timer");
+        Directory.CreateDirectory(Path.Combine(runDir, "pending"));
+        File.WriteAllText(Path.Combine(runDir, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("run-timer", "/input/tori.m2");
+        await Task.Delay(100);
+        blockingFake.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+
+        var countAtEnd = received.Count(line => line.Contains("queue_state"));
+        await Task.Delay(100); // 3× polling interval — timer should be dead
+        var countAfterWait = received.Count(line => line.Contains("queue_state"));
+
+        Assert.Equal(countAtEnd, countAfterWait);
+    }
+
     // --- Bug #56: run_paused event ---
 
     [Fact]

@@ -2,8 +2,10 @@ using ExtShiftingApp.M2;
 
 namespace ExtShiftingApp.Analysis;
 
-public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string outputPath)
+public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string outputPath,
+    TimeSpan? pollingInterval = null)
 {
+    private readonly TimeSpan _pollingInterval = pollingInterval ?? TimeSpan.FromSeconds(60);
     private JobState _state = JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
@@ -65,6 +67,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     private async Task RunQueueAsync(string runName, string? inputFilePath, BatchParameters batch, CancellationToken ct)
     {
+        using var pollTimer = new System.Threading.Timer(_ => Poll(), null, _pollingInterval, _pollingInterval);
         try
         {
             var scriptPath = Path.Combine(m2RepoPath, "scripts", "runQueue.m2");
