@@ -1,9 +1,6 @@
 # Backlog
 
-- **Iterative analysis: file-based model limitations** `[large] [high]`: The iterative analysis loop processes triangulations in file-based rounds — each round writes newly generated elements to a file, and the loop continues until no new elements are produced. This model is slow due to per-round file I/O, provides no way to pause and resume a long-running calculation (including across app restarts or crashes), and offers no crash-recovery guarantee — any progress made before a failure is lost.
-
-- **M2 output observability** `[medium] [high]`: The app and M2 codebase provide limited visibility into computation state, timing, and failure modes during a run.
-  - **Iterative analysis panel lacks observability** `[medium] [high]`: The iterative analysis panel provides limited visibility into M2's internal state during a run, making it difficult to diagnose issues or understand computation progress without external tooling. The stream only forwards M2's stdout (`print` statements); stderr, and the `Analysis Log.txt` and `Exceptions Log.txt` files M2 writes to disk, are not surfaced. Spans backend and frontend but no architectural overhaul — the data already exists and needs to be exposed.
+- **M2 output observability** `[medium] [mid]`: The app and M2 codebase provide limited visibility into computation state, timing, and failure modes during a run.
   - **Output line timestamps (M2 + app layer)** `[medium] [mid]`: M2 output lines carry no timing information, making it impossible to distinguish real-time streaming from a burst of output at process exit. This prevents verification that the buffered-output fix is actually working. Two timestamp sources are needed: M2-side (when the line was emitted) and C# side (when `OutputReceived` fired), surfaced through the SSE stream and displayed in the live log.
   - **Logging gaps in ext-shifting M2 code** `[small] [mid]`: The ext-shifting Macaulay2 codebase has limited logging, making it difficult to trace computation steps or diagnose failures. Gaps in what is printed to stdout reduce the observability surfaced through the app's streaming output.
 
@@ -14,6 +11,8 @@
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
 - **Macaulay2 package lifecycle** `[large] [mid]`: The ext-shifting M2 code is not yet published as a proper Macaulay2 package; the Docker image currently bundles source rather than installing a published package.
+
+- **Automorphism-aware split filtering** `[large] [mid]`: The analysis does not account for triangulation symmetry when selecting split candidates. Vertices in the same automorphism orbit are redundant to split at, and vertices with non-trivial symmetries may also be skippable — the split exemption mechanism is a likely vehicle for both filters. For each split that is filtered out, it should be documented which non-filtered split in the same orbit covers it. Sized large because automorphism groups must be determined offline per triangulation and encoded as hard-coded exemptions, spanning potentially many triangulations.
   - **Macaulay2 package publication** `[large] [mid]`: The ext-shifting M2 code is bundled as a git submodule; it has not been published as a proper Macaulay2 package. Noted as a future goal in the PRD with architectural implications for how the Docker image bundles M2 code.
   - **Docker installPackage migration** `[small] [mid]`: Once the ext-shifting M2 code is published as a Macaulay2 package, the Dockerfile should install it via `installPackage` rather than bundling source. Depends on Macaulay2 package publication.
 
