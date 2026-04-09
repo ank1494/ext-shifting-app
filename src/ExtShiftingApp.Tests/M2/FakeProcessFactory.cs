@@ -22,20 +22,40 @@ public class ControllableFakeProcess : IRunningProcess
         _gate.TrySetResult();
     }
 
+    private TaskCompletionSource? _teardownHold;
+
+    /// <summary>
+    /// When set before Kill/Stop, WaitForExitAsync will block at the cancellation point
+    /// until ReleaseTeardown() is called. Used to reliably test the stop/restart race.
+    /// </summary>
+    public void HoldTeardown() => _teardownHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    public void ReleaseTeardown() => _teardownHold?.TrySetResult();
+
     public void Kill() { WasKilled = true; _gate.TrySetCanceled(); }
     public Task SendInputAsync(string line, CancellationToken ct = default) { InputLines.Add(line); return Task.CompletedTask; }
     public async Task WaitForExitAsync(CancellationToken ct)
     {
         await using var _ = ct.Register(() => _gate.TrySetCanceled());
-        await _gate.Task;
+        try
+        {
+            await _gate.Task;
+        }
+        catch (OperationCanceledException) when (_teardownHold is not null)
+        {
+            await _teardownHold.Task; // hold here until ReleaseTeardown() is called
+            throw;
+        }
     }
 }
 
 public class ControllableFakeProcessFactory : IProcessFactory
 {
     public ControllableFakeProcess? LastProcess { get; private set; }
+    public int StartCount { get; private set; }
+
     public IRunningProcess Start(string executable, string arguments, string workingDirectory, bool redirectStdin = false)
     {
+        StartCount++;
         LastProcess = new ControllableFakeProcess();
         return LastProcess;
     }
