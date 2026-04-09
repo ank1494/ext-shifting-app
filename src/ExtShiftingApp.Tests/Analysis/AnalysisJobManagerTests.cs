@@ -262,6 +262,32 @@ public class AnalysisJobManagerTests : IDisposable
         Assert.Equal(JobStatus.Complete, manager2.GetState().Status);
     }
 
+    // --- Bug #56: run_paused event ---
+
+    [Fact]
+    public async Task Start_RunPausedEvent_TransitionsToPaused()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "EVENT:{\"type\":\"run_paused\"}", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Start_RunCompleteEvent_TransitionsToComplete()
+    {
+        var fake = new FakeProcessFactory(exitCode: 0, output: "EVENT:{\"type\":\"run_complete\"}", error: "");
+        var manager = Build(fake);
+
+        manager.Start("my-run", "/input/tori.m2");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
+    }
+
     [Fact]
     public async Task PollingTimer_BroadcastsQueueState_WhenCountsChange()
     {

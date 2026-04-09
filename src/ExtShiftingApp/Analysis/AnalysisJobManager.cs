@@ -11,6 +11,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     private readonly List<EventHandler<string>> _subscribers = [];
     private readonly QueueStateReader _queueReader = new();
     private QueueState? _lastPolledState;
+    private bool _runPausedSeen;
 
     public JobState GetState() => _state;
 
@@ -28,6 +29,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
             throw new InvalidOperationException("A job is already running.");
 
         _outputLog.Clear();
+        _runPausedSeen = false;
         _cts = new CancellationTokenSource();
         _state = JobState.Initial with { RunName = runName, Status = JobStatus.Running };
         PersistState();
@@ -74,7 +76,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
                 scriptArgs: $"\"{configPath}\" {batchArgs}");
 
             if (result.ExitCode == 0)
-                _state = _state with { Status = ct.IsCancellationRequested ? JobStatus.Paused : JobStatus.Complete };
+                _state = _state with { Status = ct.IsCancellationRequested || _runPausedSeen ? JobStatus.Paused : JobStatus.Complete };
             else
                 _state = _state with { Status = JobStatus.Failed, Error = result.Output };
         }
@@ -106,6 +108,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     private void Broadcast(string line)
     {
+        if (line.Contains("\"type\":\"run_paused\""))
+            _runPausedSeen = true;
         _outputLog.Add(line);
         foreach (var handler in _subscribers)
             handler(this, line);
