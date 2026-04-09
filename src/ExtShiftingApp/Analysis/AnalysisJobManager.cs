@@ -9,6 +9,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     private JobState _state = TryLoadPersistedState(outputPath) ?? JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
+    private readonly object _lock = new();
     private readonly List<string> _outputLog = [];
     private readonly List<EventHandler<string>> _subscribers = [];
     private readonly QueueStateReader _queueReader = new();
@@ -27,13 +28,27 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     public void Start(string runName, string inputFilePath, BatchParameters? batch = null)
     {
-        if (_state.Status == JobStatus.Running)
-            throw new InvalidOperationException("A job is already running.");
+        Task priorTask;
+        lock (_lock)
+        {
+            if (_state.Status == JobStatus.Running && (_cts == null || !_cts.IsCancellationRequested))
+                throw new InvalidOperationException("A job is already running.");
+            priorTask = _runTask;
+        }
 
-        _outputLog.Clear();
-        _runPausedSeen = false;
-        _cts = new CancellationTokenSource();
-        _state = JobState.Initial with { RunName = runName, Status = JobStatus.Running };
+        // Drain any in-flight teardown from a prior Stop() before mutating shared state
+        priorTask.GetAwaiter().GetResult();
+
+        lock (_lock)
+        {
+            if (_state.Status == JobStatus.Running)
+                throw new InvalidOperationException("A job is already running.");
+            _outputLog.Clear();
+            _runPausedSeen = false;
+            _cts = new CancellationTokenSource();
+            _state = JobState.Initial with { RunName = runName, Status = JobStatus.Running };
+        }
+
         PersistState();
         _runTask = RunQueueAsync(runName, inputFilePath, batch ?? new BatchParameters(), _cts.Token);
     }

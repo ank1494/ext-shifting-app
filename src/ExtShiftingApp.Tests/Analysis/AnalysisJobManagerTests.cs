@@ -434,6 +434,67 @@ public class AnalysisJobManagerTests : IDisposable
         Assert.Equal(countAtEnd, countAfterWait);
     }
 
+    // --- Issue #19: Race condition in Start() ---
+
+    [Fact]
+    public async Task Start_ConcurrentCalls_ExactlyOneProcessLaunches()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        var barrier = new Barrier(2);
+        var exceptions = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+
+        var t1 = Task.Run(() =>
+        {
+            barrier.SignalAndWait();
+            try { manager.Start("run1", "/input/tori.m2"); }
+            catch (Exception ex) { exceptions.Add(ex); }
+        });
+        var t2 = Task.Run(() =>
+        {
+            barrier.SignalAndWait();
+            try { manager.Start("run1", "/input/tori.m2"); }
+            catch (Exception ex) { exceptions.Add(ex); }
+        });
+
+        await Task.WhenAll(t1, t2);
+
+        Assert.Equal(1, factory.StartCount);
+        factory.LastProcess?.Release(0, "");
+        await manager.WaitAsync();
+    }
+
+    [Fact]
+    public async Task Start_AfterStop_DrainsOldTaskBeforeStartingNew()
+    {
+        var factory = new ControllableFakeProcessFactory();
+        var manager = Build(factory);
+
+        manager.Start("run1", "/input/tori.m2");
+        var oldProcess = factory.LastProcess!;
+        oldProcess.HoldTeardown(); // prevent teardown from completing until we say so
+
+        manager.Stop(); // cancels CTS; old task is now stuck in teardown hold
+
+        // Run Start("run2") on a background thread so we can control teardown timing
+        var startTask = Task.Run(() => manager.Start("run2", "/input/tori.m2"));
+
+        // Give startTask time to reach the drain/throw point
+        await Task.Delay(50);
+
+        // Release the old teardown — with fix this unblocks the drain, then "run2" starts
+        // Without fix, startTask has already thrown InvalidOperationException (status was Running)
+        oldProcess.ReleaseTeardown();
+
+        await startTask; // throws if Start("run2") threw InvalidOperationException
+        factory.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Complete, manager.GetState().Status);
+        Assert.Equal("run2", manager.GetState().RunName);
+    }
+
     // --- Bug #56: run_paused event ---
 
     [Fact]
