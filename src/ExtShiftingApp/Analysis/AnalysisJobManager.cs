@@ -93,7 +93,11 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         {
             _state = _state with { Status = JobStatus.Failed, Error = ex.Message };
         }
-        PersistState();
+        finally
+        {
+            pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            PersistState();
+        }
     }
 
     private void Poll()
