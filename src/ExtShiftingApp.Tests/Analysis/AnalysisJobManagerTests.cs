@@ -305,6 +305,52 @@ public class AnalysisJobManagerTests : IDisposable
         await manager.WaitAsync();
     }
 
+    // --- Bug #59: state recovery on restart ---
+
+    [Fact]
+    public void Constructor_RestoresPausedState_FromDisk()
+    {
+        var runDir = Path.Combine(_outDir, "my-run");
+        Directory.CreateDirectory(runDir);
+        var state = new JobState("my-run", JobStatus.Paused, 0, null);
+        File.WriteAllText(Path.Combine(runDir, "job_state.json"),
+            System.Text.Json.JsonSerializer.Serialize(state));
+
+        var manager = Build(new FakeProcessFactory(0, "", ""));
+
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+        Assert.Equal("my-run", manager.GetState().RunName);
+    }
+
+    [Fact]
+    public void Constructor_RestoredPausedState_AllowsResume()
+    {
+        var runDir = Path.Combine(_outDir, "my-run");
+        Directory.CreateDirectory(runDir);
+        var state = new JobState("my-run", JobStatus.Paused, 0, null);
+        File.WriteAllText(Path.Combine(runDir, "job_state.json"),
+            System.Text.Json.JsonSerializer.Serialize(state));
+
+        var manager = Build(new FakeProcessFactory(0, "", ""));
+
+        var ex = Record.Exception(() => manager.Resume("my-run"));
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Constructor_RunningStateOnDisk_IsNotRestored()
+    {
+        var runDir = Path.Combine(_outDir, "crashed-run");
+        Directory.CreateDirectory(runDir);
+        var state = new JobState("crashed-run", JobStatus.Running, 0, null);
+        File.WriteAllText(Path.Combine(runDir, "job_state.json"),
+            System.Text.Json.JsonSerializer.Serialize(state));
+
+        var manager = Build(new FakeProcessFactory(0, "", ""));
+
+        Assert.NotEqual(JobStatus.Running, manager.GetState().Status);
+    }
+
     // --- Bug #60: periodic Poll() timer ---
 
     [Fact]

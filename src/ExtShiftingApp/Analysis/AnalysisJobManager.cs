@@ -6,7 +6,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     TimeSpan? pollingInterval = null)
 {
     private readonly TimeSpan _pollingInterval = pollingInterval ?? TimeSpan.FromSeconds(60);
-    private JobState _state = JobState.Initial;
+    private JobState _state = TryLoadPersistedState(outputPath) ?? JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
     private readonly List<string> _outputLog = [];
@@ -146,5 +146,30 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         Directory.CreateDirectory(dir);
         var json = System.Text.Json.JsonSerializer.Serialize(_state);
         File.WriteAllText(Path.Combine(dir, "job_state.json"), json);
+    }
+
+    private static JobState? TryLoadPersistedState(string outputPath)
+    {
+        if (!Directory.Exists(outputPath)) return null;
+
+        JobState? best = null;
+        DateTime bestModified = DateTime.MinValue;
+
+        foreach (var file in Directory.EnumerateFiles(outputPath, "job_state.json", SearchOption.AllDirectories))
+        {
+            try
+            {
+                var json = File.ReadAllText(file);
+                var state = System.Text.Json.JsonSerializer.Deserialize<JobState>(json);
+                if (state is null) continue;
+                if (state.Status != JobStatus.Paused && state.Status != JobStatus.Failed) continue;
+
+                var modified = File.GetLastWriteTimeUtc(file);
+                if (modified > bestModified) { best = state; bestModified = modified; }
+            }
+            catch { /* skip unreadable files */ }
+        }
+
+        return best;
     }
 }
