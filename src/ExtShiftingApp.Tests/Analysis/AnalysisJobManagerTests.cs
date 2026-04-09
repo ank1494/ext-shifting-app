@@ -25,10 +25,12 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     private AnalysisJobManager Build(FakeProcessFactory fake) =>
-        new(new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outDir);
+        new(new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outDir,
+            graceTimeout: TimeSpan.FromMilliseconds(50));
 
     private AnalysisJobManager Build(ControllableFakeProcessFactory factory) =>
-        new(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
+        new(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir,
+            graceTimeout: TimeSpan.FromMilliseconds(50));
 
     [Fact]
     public async Task Start_CompletedJob_TransitionsToComplete()
@@ -432,6 +434,175 @@ public class AnalysisJobManagerTests : IDisposable
         var countAfterWait = received.Count(line => line.Contains("queue_state"));
 
         Assert.Equal(countAtEnd, countAfterWait);
+    }
+
+    // --- Issue #63: stale status counts ---
+
+    [Fact]
+    public async Task PollingTimer_FiresImmediatelyOnRunStart_EmitsQueueStateSSE()
+    {
+        // Fails before fix: dueTime was _pollingInterval (60s), so no SSE fires in 100ms.
+        // Passes after fix: dueTime = TimeSpan.Zero, timer fires immediately.
+        var blockingFake = new ControllableFakeProcessFactory();
+        var received = new List<string>();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromSeconds(60),  // long — won't auto-repeat within test
+            graceTimeout: TimeSpan.FromMilliseconds(50));
+        manager.Subscribe((_, line) => received.Add(line));
+
+        var runDir = Path.Combine(_outDir, "my-run");
+        Directory.CreateDirectory(Path.Combine(runDir, "pending"));
+        Directory.CreateDirectory(Path.Combine(runDir, "done"));
+        File.WriteAllText(Path.Combine(runDir, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("my-run", "/input/tori.m2");
+        await Task.Delay(100); // well under 60s pollingInterval — only fires if dueTime=0
+
+        Assert.Contains(received, line => line.Contains("queue_state"));
+
+        blockingFake.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+    }
+
+    [Fact]
+    public async Task Start_ResetsLastPolledState_AllowsFirstPollToBroadcastOnRestart()
+    {
+        // Fails before fix: _lastPolledState not cleared on Start(), so same counts are suppressed.
+        // Passes after fix: _lastPolledState = null reset in Start().
+        var received = new List<string>();
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromHours(1),
+            graceTimeout: TimeSpan.FromMilliseconds(50));
+        manager.Subscribe((_, line) => received.Add(line));
+
+        // Run A — seed 1 pending item
+        var runDirA = Path.Combine(_outDir, "run-a");
+        Directory.CreateDirectory(Path.Combine(runDirA, "pending"));
+        Directory.CreateDirectory(Path.Combine(runDirA, "done"));
+        File.WriteAllText(Path.Combine(runDirA, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("run-a", "/input/tori.m2");
+        await Task.Delay(50); // let initial timer fire (dueTime=0) — establishes _lastPolledState={1,0}
+        blockingFake.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+        await manager.WaitAsync();
+
+        var countAfterRunA = received.Count(l => l.Contains("queue_state"));
+
+        // Run B — same queue state (1 pending item) to expose the stale _lastPolledState bug
+        var runDirB = Path.Combine(_outDir, "run-b");
+        Directory.CreateDirectory(Path.Combine(runDirB, "pending"));
+        Directory.CreateDirectory(Path.Combine(runDirB, "done"));
+        File.WriteAllText(Path.Combine(runDirB, "pending", "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("run-b", "/input/tori.m2");
+        // Immediately call FirePollForTest — should broadcast because _lastPolledState was reset
+        manager.FirePollForTest();
+
+        Assert.True(received.Count(l => l.Contains("queue_state")) > countAfterRunA,
+            "_lastPolledState should be reset on Start() so re-run with same counts still broadcasts");
+
+        blockingFake.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+    }
+
+    [Fact]
+    public async Task GetState_ReturnsLiveDiskCounts_BetweenPollFireings()
+    {
+        // Fails before fix: GetState() returns stale _state snapshot.
+        // Passes after fix: GetState() overlays live _queueReader.Read() when Running.
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            pollingInterval: TimeSpan.FromMilliseconds(30),
+            graceTimeout: TimeSpan.FromMilliseconds(50));
+
+        var runDir = Path.Combine(_outDir, "my-run");
+        var pendingDir = Directory.CreateDirectory(Path.Combine(runDir, "pending")).FullName;
+        var doneDir = Directory.CreateDirectory(Path.Combine(runDir, "done")).FullName;
+        File.WriteAllText(Path.Combine(pendingDir, "0001"),
+            "new HashTable from {\n  \"depth\" => 0,\n}");
+
+        manager.Start("my-run", "/input/tori.m2");
+        await Task.Delay(50); // let timer fire once — _lastPolledState = {pending:1}
+
+        // Simulate M2 completing the item between poll firings
+        File.Move(Path.Combine(pendingDir, "0001"), Path.Combine(doneDir, "0001"));
+
+        // GetState() should reflect current disk state immediately (no FirePollForTest needed)
+        var state = manager.GetState();
+        Assert.Equal(0, state.PendingCount);
+        Assert.Equal(1, state.DoneCount);
+
+        blockingFake.LastProcess!.Release(0, "");
+        await manager.WaitAsync();
+    }
+
+    // --- Issue #62: Stop() hard-kills M2 mid-item ---
+
+    [Fact]
+    public async Task Stop_WritesStopRequestedFile_InsteadOfImmediateCancellation()
+    {
+        // Fails before fix: Stop() cancels CTS immediately — run completes before file check.
+        // Passes after fix: Stop() writes file + schedules grace cancel.
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            graceTimeout: TimeSpan.FromSeconds(30)); // long grace — won't fire during test
+
+        manager.Start("my-run", "/input/tori.m2");
+
+        manager.Stop();
+
+        // Signal file should exist
+        Assert.True(File.Exists(Path.Combine(_outDir, "my-run", "stop_requested")));
+
+        // Run should still be in progress (not immediately cancelled)
+        await Task.Delay(20);
+        Assert.False(manager.WaitAsync().IsCompleted,
+            "Run should not complete immediately — CTS is not cancelled until grace timeout");
+
+        // Cleanup: release naturally (simulating M2 finishing current item and seeing signal)
+        blockingFake.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+        await manager.WaitAsync();
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+    }
+
+    [Fact]
+    public async Task Stop_ItemInFlight_ItemDoneReceivedBeforePaused_KillNeverCalled()
+    {
+        // Fails before fix: Stop() cancels CTS → process killed → item_done never emitted.
+        // Passes after fix: Stop() writes file; process runs to natural exit; item_done is received.
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
+            graceTimeout: TimeSpan.FromSeconds(30));
+        var received = new List<string>();
+        manager.Subscribe((_, line) => received.Add(line));
+
+        manager.Start("my-run", "/input/tori.m2");
+        var process = blockingFake.LastProcess!;
+
+        // M2 emits item_started — item is now in-flight
+        process.EmitOutput("EVENT:{\"type\":\"item_started\",\"item\":\"0001\",\"depth\":0,\"parent\":\"seed\"}");
+
+        // Stop() called while item is in-flight — should NOT kill process immediately
+        manager.Stop();
+
+        // M2 finishes the current item naturally, then sees stop_requested and exits
+        process.Release(0,
+            "EVENT:{\"type\":\"item_done\",\"item\":\"0001\",\"splits\":2}\n" +
+            "EVENT:{\"type\":\"run_paused\"}");
+        await manager.WaitAsync();
+
+        Assert.Contains(received, l => l.Contains("item_done"));
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
+        Assert.False(process.WasKilled, "M2 process should not be hard-killed when stop_requested signal is used");
     }
 
     // --- Issue #19: Race condition in Start() ---

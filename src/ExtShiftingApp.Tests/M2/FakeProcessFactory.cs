@@ -31,6 +31,13 @@ public class ControllableFakeProcess : IRunningProcess
     public void HoldTeardown() => _teardownHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     public void ReleaseTeardown() => _teardownHold?.TrySetResult();
 
+    /// <summary>Emits output lines to subscribers without releasing the process gate.</summary>
+    public void EmitOutput(string output)
+    {
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            OutputReceived?.Invoke(this, line);
+    }
+
     public void Kill() { WasKilled = true; _gate.TrySetCanceled(); }
     public Task SendInputAsync(string line, CancellationToken ct = default) { InputLines.Add(line); return Task.CompletedTask; }
     public async Task WaitForExitAsync(CancellationToken ct)
