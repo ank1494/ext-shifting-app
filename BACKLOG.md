@@ -3,10 +3,9 @@
 - **M2 output observability** `[medium] [mid]`: The app and M2 codebase provide limited visibility into computation state, timing, and failure modes during a run.
   - **Output line timestamps (M2 + app layer)** `[medium] [mid]`: M2 output lines carry no timing information, making it impossible to distinguish real-time streaming from a burst of output at process exit. This prevents verification that the buffered-output fix is actually working. Two timestamp sources are needed: M2-side (when the line was emitted) and C# side (when `OutputReceived` fired), surfaced through the SSE stream and displayed in the live log.
   - **Logging gaps in ext-shifting M2 code** `[small] [mid]`: The ext-shifting Macaulay2 codebase has limited logging, making it difficult to trace computation steps or diagnose failures. Gaps in what is printed to stdout reduce the observability surfaced through the app's streaming output.
+  - related: github issue #55
 
-- **Test coverage** `[medium] [high]`: The codebase has no automated tests for key logic paths or full-stack behavior. Correctness of iterative analysis steps and the Docker/M2 integration seam are both unverified.
-  - **Iterative analysis unit/integration tests** `[medium] [high]`: The iterative analysis loop has no automated tests that exercise intermediate steps. Given a known triangulation (e.g. an eight-vertex triangulation of the torus), a test should select one non-critical split whose edge shifting is not yet a prefix, repeat, and assert termination within a surface-dependent vertex bound N. N must be confirmed per surface before the assertion can be written.
-  - **Integration tests (Docker + M2)** `[medium] [mid]`: No test suite exercises the full stack with a real M2 process inside Docker. Explicitly deferred in the PRD; M2 calculation correctness is covered by the ext-shifting codebase, but the integration seam is untested.
+- **Integration tests (Docker + M2)** `[medium] [mid]`: No test suite exercises the full stack with a real M2 process inside Docker. M2 calculation correctness is covered by the ext-shifting codebase, but the integration seam is untested. (Iterative analysis termination tests + M2 runner infrastructure tracked in #70.)
 
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
