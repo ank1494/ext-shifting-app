@@ -3,10 +3,9 @@ using ExtShiftingApp.M2;
 namespace ExtShiftingApp.Analysis;
 
 public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string outputPath,
-    TimeSpan? pollingInterval = null, TimeSpan? graceTimeout = null)
+    TimeSpan? pollingInterval = null)
 {
     private readonly TimeSpan _pollingInterval = pollingInterval ?? TimeSpan.FromSeconds(60);
-    private readonly TimeSpan _graceTimeout    = graceTimeout    ?? TimeSpan.FromSeconds(30);
     private JobState _state = TryLoadPersistedState(outputPath) ?? JobState.Initial;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
@@ -74,8 +73,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     /// <summary>
     /// Signals a graceful stop by writing a <c>stop_requested</c> file in the run directory.
-    /// M2's runQueue loop will detect the file, finish the current item, and exit cleanly.
-    /// A hard CTS cancellation fires after <c>_graceTimeout</c> as a safety fallback.
+    /// M2's runQueue loop detects the file between items, finishes the current item, and exits.
+    /// The run task completes naturally; no CTS cancellation is scheduled.
     /// </summary>
     public void Stop()
     {
@@ -86,14 +85,7 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
         var stopSignalPath = Path.Combine(outputPath, runName, "stop_requested");
         try { File.WriteAllText(stopSignalPath, ""); }
-        catch { /* run dir may not exist yet; grace-kill fallback handles it */ }
-
-        // Fallback hard kill after grace period — guards against M2 hanging indefinitely
-        var capturedCts = _cts;
-        _ = Task.Delay(_graceTimeout).ContinueWith(_ =>
-        {
-            if (_cts == capturedCts) capturedCts?.Cancel();
-        });
+        catch { /* run dir may not exist yet */ }
     }
 
     /// <summary>
@@ -146,6 +138,13 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         }
         catch (OperationCanceledException)
         {
+            // CTS was cancelled externally (e.g. app shutdown). Clean up the signal file
+            // if M2 didn't consume it — prevents it from poisoning a subsequent Resume.
+            if (_state.RunName is not null)
+            {
+                var signal = Path.Combine(outputPath, _state.RunName, "stop_requested");
+                try { File.Delete(signal); } catch { }
+            }
             _state = _state with { Status = JobStatus.Paused };
         }
         catch (Exception ex)

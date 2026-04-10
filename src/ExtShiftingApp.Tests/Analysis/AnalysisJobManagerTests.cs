@@ -25,12 +25,10 @@ public class AnalysisJobManagerTests : IDisposable
     }
 
     private AnalysisJobManager Build(FakeProcessFactory fake) =>
-        new(new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outDir,
-            graceTimeout: TimeSpan.FromMilliseconds(50));
+        new(new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outDir);
 
     private AnalysisJobManager Build(ControllableFakeProcessFactory factory) =>
-        new(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir,
-            graceTimeout: TimeSpan.FromMilliseconds(50));
+        new(new M2ProcessRunner(factory, _m2Dir), _m2Dir, _outDir);
 
     [Fact]
     public async Task Start_CompletedJob_TransitionsToComplete()
@@ -79,6 +77,9 @@ public class AnalysisJobManagerTests : IDisposable
 
         manager.Start("my-run", "/input/tori.m2");
         manager.Stop();
+
+        // Stop() no longer hard-kills; M2 must exit naturally after seeing the signal.
+        factory.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
         await manager.WaitAsync();
 
         Assert.Equal(JobStatus.Paused, manager.GetState().Status);
@@ -236,6 +237,7 @@ public class AnalysisJobManagerTests : IDisposable
 
         manager.Start("my-run", "/input/tori.m2");
         manager.Stop();
+        factory.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
         await manager.WaitAsync();
 
         Assert.Equal(JobStatus.Paused, manager.GetState().Status);
@@ -250,6 +252,7 @@ public class AnalysisJobManagerTests : IDisposable
         // Start and stop to reach Paused
         manager.Start("my-run", "/input/tori.m2");
         manager.Stop();
+        factory.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
         await manager.WaitAsync();
         Assert.Equal(JobStatus.Paused, manager.GetState().Status);
 
@@ -299,9 +302,11 @@ public class AnalysisJobManagerTests : IDisposable
         manager.SetPausedState("run-A");
         Assert.True(manager.GetOutputLog().Count > 0, "Precondition: log should have lines");
 
-        // Resume — factory creates a new blocking process; log should be cleared before it runs
+        // Resume — factory creates a new blocking process; prior output must not appear again
         manager.Resume("run-A");
-        Assert.Equal(0, manager.GetOutputLog().Count);
+        // The immediate poll timer (dueTime=0) may add a queue_state line before this assertion,
+        // so we check for absence of old content rather than exact count == 0.
+        Assert.DoesNotContain(manager.GetOutputLog(), l => l.Contains("old output"));
 
         factory.LastProcess!.Release(0, "");
         await manager.WaitAsync();
@@ -447,8 +452,7 @@ public class AnalysisJobManagerTests : IDisposable
         var received = new List<string>();
         var manager = new AnalysisJobManager(
             new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
-            pollingInterval: TimeSpan.FromSeconds(60),  // long — won't auto-repeat within test
-            graceTimeout: TimeSpan.FromMilliseconds(50));
+            pollingInterval: TimeSpan.FromSeconds(60)); // long — won't auto-repeat within test
         manager.Subscribe((_, line) => received.Add(line));
 
         var runDir = Path.Combine(_outDir, "my-run");
@@ -475,8 +479,7 @@ public class AnalysisJobManagerTests : IDisposable
         var blockingFake = new ControllableFakeProcessFactory();
         var manager = new AnalysisJobManager(
             new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
-            pollingInterval: TimeSpan.FromHours(1),
-            graceTimeout: TimeSpan.FromMilliseconds(50));
+            pollingInterval: TimeSpan.FromHours(1));
         manager.Subscribe((_, line) => received.Add(line));
 
         // Run A — seed 1 pending item
@@ -519,8 +522,7 @@ public class AnalysisJobManagerTests : IDisposable
         var blockingFake = new ControllableFakeProcessFactory();
         var manager = new AnalysisJobManager(
             new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
-            pollingInterval: TimeSpan.FromMilliseconds(30),
-            graceTimeout: TimeSpan.FromMilliseconds(50));
+            pollingInterval: TimeSpan.FromSeconds(10)); // long enough that only the initial dueTime=0 fires
 
         var runDir = Path.Combine(_outDir, "my-run");
         var pendingDir = Directory.CreateDirectory(Path.Combine(runDir, "pending")).FullName;
@@ -548,12 +550,10 @@ public class AnalysisJobManagerTests : IDisposable
     [Fact]
     public async Task Stop_WritesStopRequestedFile_InsteadOfImmediateCancellation()
     {
-        // Fails before fix: Stop() cancels CTS immediately — run completes before file check.
-        // Passes after fix: Stop() writes file + schedules grace cancel.
+        // Verifies Stop() writes stop_requested and does not immediately end the run.
         var blockingFake = new ControllableFakeProcessFactory();
         var manager = new AnalysisJobManager(
-            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
-            graceTimeout: TimeSpan.FromSeconds(30)); // long grace — won't fire during test
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir);
 
         manager.Start("my-run", "/input/tori.m2");
 
@@ -562,10 +562,10 @@ public class AnalysisJobManagerTests : IDisposable
         // Signal file should exist
         Assert.True(File.Exists(Path.Combine(_outDir, "my-run", "stop_requested")));
 
-        // Run should still be in progress (not immediately cancelled)
+        // Run should still be in progress — Stop() does not cancel CTS
         await Task.Delay(20);
         Assert.False(manager.WaitAsync().IsCompleted,
-            "Run should not complete immediately — CTS is not cancelled until grace timeout");
+            "Run should not complete immediately after Stop()");
 
         // Cleanup: release naturally (simulating M2 finishing current item and seeing signal)
         blockingFake.LastProcess!.Release(0, "EVENT:{\"type\":\"run_paused\"}");
@@ -580,8 +580,7 @@ public class AnalysisJobManagerTests : IDisposable
         // Passes after fix: Stop() writes file; process runs to natural exit; item_done is received.
         var blockingFake = new ControllableFakeProcessFactory();
         var manager = new AnalysisJobManager(
-            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir,
-            graceTimeout: TimeSpan.FromSeconds(30));
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir);
         var received = new List<string>();
         manager.Subscribe((_, line) => received.Add(line));
 
@@ -603,6 +602,39 @@ public class AnalysisJobManagerTests : IDisposable
         Assert.Contains(received, l => l.Contains("item_done"));
         Assert.Equal(JobStatus.Paused, manager.GetState().Status);
         Assert.False(process.WasKilled, "M2 process should not be hard-killed when stop_requested signal is used");
+    }
+
+    // --- Bug: Stop() hard-kills M2 mid-item when grace timeout fires ---
+
+    [Fact]
+    public async Task Stop_ItemTakesLongerThanGraceTimeout_ProcessNotKilledPrematurely()
+    {
+        // Before fix: Stop() scheduled CTS cancellation after a grace timeout, killing M2 mid-item.
+        // After fix: Stop() only writes stop_requested; CTS is never cancelled by Stop().
+        var blockingFake = new ControllableFakeProcessFactory();
+        var manager = new AnalysisJobManager(
+            new M2ProcessRunner(blockingFake, _m2Dir), _m2Dir, _outDir);
+
+        manager.Start("my-run", "/input/tori.m2");
+        var process = blockingFake.LastProcess!;
+
+        process.EmitOutput("EVENT:{\"type\":\"item_started\",\"item\":\"0001\",\"depth\":0,\"parent\":\"seed\"}");
+        manager.Stop();
+
+        // Wait well past the (old) grace timeout — item is still computing
+        await Task.Delay(150);
+
+        // Bug: WaitAsync() is already completed (CTS fired at 30ms, M2 killed)
+        // Fix: run is still in progress — Stop() did not cancel CTS
+        Assert.False(manager.WaitAsync().IsCompleted,
+            "Stop() must not kill M2 mid-item; run should still be in progress after grace timeout");
+
+        process.Release(0,
+            "EVENT:{\"type\":\"item_done\",\"item\":\"0001\",\"splits\":0}\n" +
+            "EVENT:{\"type\":\"run_paused\"}");
+        await manager.WaitAsync();
+
+        Assert.Equal(JobStatus.Paused, manager.GetState().Status);
     }
 
     // --- Issue #19: Race condition in Start() ---
@@ -644,21 +676,21 @@ public class AnalysisJobManagerTests : IDisposable
 
         manager.Start("run1", "/input/tori.m2");
         var oldProcess = factory.LastProcess!;
-        oldProcess.HoldTeardown(); // prevent teardown from completing until we say so
 
-        manager.Stop(); // cancels CTS; old task is now stuck in teardown hold
+        manager.Stop(); // writes stop_requested; does NOT cancel CTS
 
-        // Run Start("run2") on a background thread so we can control teardown timing
+        // Start("run2") on a background thread — should block draining run1, not throw
         var startTask = Task.Run(() => manager.Start("run2", "/input/tori.m2"));
 
-        // Give startTask time to reach the drain/throw point
-        await Task.Delay(50);
+        await Task.Delay(50); // give startTask time to reach the drain point
 
-        // Release the old teardown — with fix this unblocks the drain, then "run2" starts
-        // Without fix, startTask has already thrown InvalidOperationException (status was Running)
-        oldProcess.ReleaseTeardown();
+        Assert.False(startTask.IsCompleted,
+            "Start should block while draining the old run, not throw or complete immediately");
 
-        await startTask; // throws if Start("run2") threw InvalidOperationException
+        // Release run1 naturally (M2 sees signal and exits) — unblocks the drain
+        oldProcess.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+
+        await startTask;
         factory.LastProcess!.Release(0, "");
         await manager.WaitAsync();
 
