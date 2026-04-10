@@ -15,8 +15,23 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
     private readonly QueueStateReader _queueReader = new();
     private QueueState? _lastPolledState;
     private bool _runPausedSeen;
+    private bool _stopRequested;
 
-    public JobState GetState() => _state;
+    public JobState GetState()
+    {
+        if (_state.Status == JobStatus.Running && _state.RunName is not null)
+        {
+            var runDir = Path.Combine(outputPath, _state.RunName);
+            var live = _queueReader.Read(runDir);
+            return _state with
+            {
+                PendingCount     = live.PendingCount,
+                DoneCount        = live.DoneCount,
+                CurrentItemDepth = live.CurrentItemDepth,
+            };
+        }
+        return _state;
+    }
 
     public IReadOnlyList<string> GetOutputLog() => _outputLog;
 
@@ -31,7 +46,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         Task priorTask;
         lock (_lock)
         {
-            if (_state.Status == JobStatus.Running && (_cts == null || !_cts.IsCancellationRequested))
+            if (_state.Status == JobStatus.Running &&
+                (_cts == null || (!_cts.IsCancellationRequested && !_stopRequested)))
                 throw new InvalidOperationException("A job is already running.");
             priorTask = _runTask;
         }
@@ -45,6 +61,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
                 throw new InvalidOperationException("A job is already running.");
             _outputLog.Clear();
             _runPausedSeen = false;
+            _stopRequested = false;
+            _lastPolledState = null;
             _cts = new CancellationTokenSource();
             _state = JobState.Initial with { RunName = runName, Status = JobStatus.Running };
         }
@@ -53,7 +71,22 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         _runTask = RunQueueAsync(runName, inputFilePath, batch ?? new BatchParameters(), _cts.Token);
     }
 
-    public void Stop() => _cts?.Cancel();
+    /// <summary>
+    /// Signals a graceful stop by writing a <c>stop_requested</c> file in the run directory.
+    /// M2's runQueue loop detects the file between items, finishes the current item, and exits.
+    /// The run task completes naturally; no CTS cancellation is scheduled.
+    /// </summary>
+    public void Stop()
+    {
+        var runName = _state.RunName;
+        if (runName is null) return;
+
+        _stopRequested = true;
+
+        var stopSignalPath = Path.Combine(outputPath, runName, "stop_requested");
+        try { File.WriteAllText(stopSignalPath, ""); }
+        catch { /* run dir may not exist yet */ }
+    }
 
     /// <summary>
     /// Resumes a paused run. Exposed for testing via SetPausedState.
@@ -65,6 +98,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
         _outputLog.Clear();
         _runPausedSeen = false;
+        _stopRequested = false;
+        _lastPolledState = null;
         _cts = new CancellationTokenSource();
         _state = _state with { RunName = runName, Status = JobStatus.Running };
         PersistState();
@@ -82,7 +117,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     private async Task RunQueueAsync(string runName, string? inputFilePath, BatchParameters batch, CancellationToken ct)
     {
-        using var pollTimer = new System.Threading.Timer(_ => Poll(), null, _pollingInterval, _pollingInterval);
+        // dueTime = TimeSpan.Zero: first poll fires immediately so SSE clients see counts right away
+        using var pollTimer = new System.Threading.Timer(_ => Poll(), null, TimeSpan.Zero, _pollingInterval);
         try
         {
             var scriptPath = Path.Combine(m2RepoPath, "scripts", "runQueue.m2");
@@ -102,6 +138,13 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
         }
         catch (OperationCanceledException)
         {
+            // CTS was cancelled externally (e.g. app shutdown). Clean up the signal file
+            // if M2 didn't consume it — prevents it from poisoning a subsequent Resume.
+            if (_state.RunName is not null)
+            {
+                var signal = Path.Combine(outputPath, _state.RunName, "stop_requested");
+                try { File.Delete(signal); } catch { }
+            }
             _state = _state with { Status = JobStatus.Paused };
         }
         catch (Exception ex)
@@ -153,8 +196,8 @@ public class AnalysisJobManager(M2ProcessRunner m2, string m2RepoPath, string ou
 
     private static string FormatBatchArgs(BatchParameters b)
     {
-        var itemCap  = b.ItemCap.HasValue        ? b.ItemCap.Value.ToString()                : "null";
-        var maxVerts = b.MaxVertexCount.HasValue  ? b.MaxVertexCount.Value.ToString()         : "null";
+        var itemCap  = b.ItemCap.HasValue        ? b.ItemCap.Value.ToString()                     : "null";
+        var maxVerts = b.MaxVertexCount.HasValue  ? b.MaxVertexCount.Value.ToString()              : "null";
         var timeout  = b.Timeout.HasValue         ? ((int)b.Timeout.Value.TotalSeconds).ToString() : "null";
         return $"{itemCap} {maxVerts} {timeout}";
     }
