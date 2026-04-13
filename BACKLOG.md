@@ -13,7 +13,7 @@
 
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
-- **Macaulay2 package lifecycle** `[large] [mid]`: The ext-shifting M2 code is not yet published as a proper Macaulay2 package; the Docker image currently bundles source rather than installing a published package.
+- **Macaulay2 package lifecycle** `[small] [low]`:
   - **Docker installPackage migration** `[small] [low]`: The app currently bundles M2 source via the submodule; no discrepancy risk exists with the current approach. Optionally migrate to `installPackage` once a versioned release workflow for ext-shifting exists. Depends on Macaulay2 package publication.
   - **Audit and scope package exports** `[small] [low]`: The initial package exports all `lib/` symbols without distinguishing public API from internal helpers. Internal helpers may need to be relocated and their `TEST ///` blocks converted to standalone scripts. Depends on initial package publication.
 
