@@ -13,8 +13,9 @@
 
 - **M2 code change behavior** `[large] [mid]`: The app references Macaulay2 code that can change externally (e.g. switching branches on ext-shifting). It is unclear how the app should respond to such changes.
 
-- **Macaulay2 package lifecycle** `[large] [mid]`: The ext-shifting M2 code is not yet published as a proper Macaulay2 package; the Docker image currently bundles source rather than installing a published package.
-  - **Docker installPackage migration** `[small] [mid]`: Once the ext-shifting M2 code is published as a Macaulay2 package, the Dockerfile should install it via `installPackage` rather than bundling source. Depends on Macaulay2 package publication.
+- **Macaulay2 package lifecycle** `[small] [low]`:
+  - **Docker installPackage migration** `[small] [low]`: The app currently bundles M2 source via the submodule; no discrepancy risk exists with the current approach. Optionally migrate to `installPackage` once a versioned release workflow for ext-shifting exists. Depends on Macaulay2 package publication.
+  - **Audit and scope package exports** `[small] [low]`: The initial package exports all `lib/` symbols without distinguishing public API from internal helpers. Internal helpers may need to be relocated and their `TEST ///` blocks converted to standalone scripts. Depends on initial package publication.
 
 - **Automorphism-aware split filtering** `[large] [mid]`: The analysis does not account for triangulation symmetry when selecting split candidates. Vertices in the same automorphism orbit are redundant to split at, and vertices with non-trivial symmetries may also be skippable — the split exemption mechanism is a likely vehicle for both filters. For each split that is filtered out, it should be documented which non-filtered split in the same orbit covers it. Sized large because automorphism groups must be determined offline per triangulation and encoded as hard-coded exemptions, spanning potentially many triangulations.
 
