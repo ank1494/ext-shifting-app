@@ -79,4 +79,13 @@ public class M2IntegrationTests
         var result = await Runner.RunCommandAsync("check \"ExtShifting\"", M2Root);
         Assert.True(result.Success, result.Output);
     }
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public async Task FailingScript_ReportsFailure()
+    {
+        if (!Runner.IsAvailable()) return; // skip: M2 not available
+        var result = await Runner.RunCommandAsync("assert false", M2Root);
+        Assert.False(result.Success, "Expected a failing M2 assertion to be reported as failure");
+    }
 }
