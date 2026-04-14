@@ -53,6 +53,10 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
+    public Task QueueOps_ProcessItem_CritRegions_Passes() => RunScript("queueOps-processItem-critRegions.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
     public Task QueueOps_RunQueue_ItemCap_Passes() => RunScript("queueOps-runQueue-itemCap.m2");
 
     [Fact]
