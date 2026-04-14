@@ -18,15 +18,13 @@ Do NOT add: architecture explanations, C# internals, test philosophy, module des
 
 When using the `/tdd` skill (or doing any test-driven work) and the changes involve M2 code (files under `m2/ext-shifting/`):
 
-- Always include M2 tests as part of the TDD cycle.
-- M2 tests cannot be run automatically — a human must run them in an M2 terminal.
-- After writing or modifying M2 test code, tell the user exactly what command to run, e.g.:
+- M2 tests are integrated into the dotnet test suite as integration tests and run via `dotnet test`.
+- Do NOT run the full suite on every red-green cycle — M2 integration tests are slow. Run targeted tests during the cycle using filters, e.g.:
   ```
-  loadPackage "ext-shifting"; check "ext-shifting"
+  dotnet test --filter "FullyQualifiedName~SomeSpecificTest"
   ```
-  or the specific test file/block to evaluate.
-- Wait for the user to report results before marking the M2 test step complete.
-- Do NOT consider the TDD cycle done until M2 tests have been confirmed passing by the user.
+- Run the full suite (`dotnet test`) only at the end of a TDD cycle to confirm nothing is broken.
+- Do NOT consider the TDD cycle done until the full suite passes.
 
 ## Ubiquitous Language
 
