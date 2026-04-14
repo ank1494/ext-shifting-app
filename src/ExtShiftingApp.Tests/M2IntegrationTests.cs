@@ -58,4 +58,25 @@ public class M2IntegrationTests
     [Fact]
     [Trait("Category", "M2Integration")]
     public Task QueueOps_RunQueue_Options_Passes() => RunScript("queueOps-runQueue-options.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task TestProjectivePlane_Passes() => RunScript("testProjectivePlane.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task TestTorus_Passes() => RunScript("testTorus.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task TestKleinBottle_Passes() => RunScript("testKleinBottle.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public async Task M2LibChecks_PassAllUnitTests()
+    {
+        if (!Runner.IsAvailable()) return; // skip: M2 not available
+        var result = await Runner.RunCommandAsync("check \"ext-shifting\"", M2Root);
+        Assert.True(result.Success, result.Output);
+    }
 }

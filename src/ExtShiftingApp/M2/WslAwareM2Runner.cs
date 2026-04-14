@@ -53,20 +53,11 @@ public class WslAwareM2Runner
         return $"--script \"{scriptPath}\"";
     }
 
-    private string WorkingDirectory(string scriptPath)
-    {
-        var dir = Path.GetDirectoryName(scriptPath) ?? ".";
-        // For WSL runs, working directory is the parent of the script in WSL form
-        // but ProcessFactory's working directory is the host path; WSL resolves relative to CWD.
-        // We pass the host path and let the shell resolve it.
-        return Path.GetDirectoryName(Path.GetFullPath(scriptPath)) ?? ".";
-    }
-
-    public async Task<M2Result> RunScriptAsync(string scriptPath)
+    public async Task<M2Result> RunScriptAsync(string scriptPath, string? workingDirectory = null)
     {
         const int maxOutputLines = 100;
         var recentLines = new Queue<string>();
-        var workDir = WorkingDirectory(scriptPath);
+        var workDir = workingDirectory ?? Path.GetDirectoryName(Path.GetFullPath(scriptPath)) ?? ".";
         var process = _processFactory.Start(Executable, BuildArguments(scriptPath), workDir);
 
         void capture(string line)
@@ -81,6 +72,24 @@ public class WslAwareM2Runner
         await process.WaitForExitAsync(CancellationToken.None);
 
         return new M2Result(process.ExitCode == 0, string.Join("\n", recentLines), process.ExitCode);
+    }
+
+    /// <summary>
+    /// Runs an M2 command string from the given working directory.
+    /// Writes the code to a temp script and invokes it.
+    /// </summary>
+    public async Task<M2Result> RunCommandAsync(string m2Code, string workingDirectory)
+    {
+        var tmpScript = Path.Combine(Path.GetTempPath(), $"m2_{Guid.NewGuid():N}.m2");
+        try
+        {
+            await File.WriteAllTextAsync(tmpScript, m2Code);
+            return await RunScriptAsync(tmpScript, workingDirectory);
+        }
+        finally
+        {
+            File.Delete(tmpScript);
+        }
     }
 
     /// <summary>
