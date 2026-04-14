@@ -19,7 +19,7 @@ public class M2IntegrationTests
     private static async Task RunScript(string scriptName)
     {
         if (!Runner.IsAvailable()) return; // skip: M2 not available
-        var result = await Runner.RunScriptAsync(Path.Combine(TestsDir, scriptName));
+        var result = await Runner.RunScriptAsync(Path.Combine(TestsDir, scriptName), M2Root);
         Assert.True(result.Success, result.Output);
     }
 
@@ -76,7 +76,7 @@ public class M2IntegrationTests
     public async Task M2LibChecks_PassAllUnitTests()
     {
         if (!Runner.IsAvailable()) return; // skip: M2 not available
-        var result = await Runner.RunCommandAsync("check \"ext-shifting\"", M2Root);
+        var result = await Runner.RunCommandAsync("check \"ExtShifting\"", M2Root);
         Assert.True(result.Success, result.Output);
     }
 }
