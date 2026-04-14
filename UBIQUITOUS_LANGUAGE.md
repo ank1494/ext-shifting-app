@@ -72,6 +72,21 @@ Canonical terminology for the ext-shifting-app codebase: backend, frontend, API,
 
 ---
 
+### M2 Queue (App-Layer References)
+
+| Term | Definition | Aliases to avoid |
+|------|------------|-----------------|
+| **Analysis queue** | The persistent file-based work queue managed by `queueOps.m2`. Lives under the run output directory as two subdirectories: `pending/` (items awaiting processing) and `done/` (items already processed). The queue is initialised by `initQueue` and driven by `runQueue`. | "work queue", "job queue" |
+| **Queue item** | A single unit of work in the analysis queue: one triangulation plus provenance metadata (`parent`, `depth`, `seq`). Serialised as a readable M2 `HashTable` in a zero-padded file (e.g. `0001`). | "work item", "item file" |
+| **Pending file** | A queue item file in `pending/` awaiting processing. Written by `writeQueueItem`. Moved to `done/` (as a done file) by `processQueueItem` after the item is processed. | "input file" (within queue context) |
+| **Done file** (updated) | A queue item file in `done/` that has been processed. Written by `writeDoneItem`. Contains the same fields as the pending file (`parent`, `depth`, `seq`, `triangulation`) plus a `critRegions` key holding the list of critical region `HashTable` objects found during processing (serialised via `toExternalString`). | "output file" (within queue context) |
+| **`item_started` event** (new) | A structured SSE event emitted to stderr by `emitItemStarted` when `processQueueItem` begins processing an item. JSON shape: `{"type":"item_started","item":"<name>","depth":<n>,"parent":"<name>"}`. Forwarded to the browser by the C# SSE pass-through. | — |
+| **`item_done` event** (updated) | A structured SSE event emitted to stderr by `emitItemDone` when `processQueueItem` finishes an item. JSON shape: `{"type":"item_done","item":"<name>","splits":<n>,"critRegions":[...]}`. The `critRegions` array contains one object per critical region found, each with `regionShape` (string), `boundaryVertexCount` (integer), and `innerVertexCount` (integer). Previously the event did not include `critRegions`. Forwarded to the browser by the C# SSE pass-through without modification. | — |
+| **`run_complete` event** | A structured SSE event emitted when `runQueue` empties `pending/` naturally. JSON: `{"type":"run_complete"}`. | — |
+| **`run_paused` event** | A structured SSE event emitted when `runQueue` stops early due to a cap (item cap, vertex cap, timeout, or stop signal). JSON: `{"type":"run_paused"}`. | — |
+
+---
+
 ### M2 Scripts & Files (App-Layer References)
 
 | Term | Definition | Aliases to avoid |
@@ -96,6 +111,8 @@ Canonical terminology for the ext-shifting-app codebase: backend, frontend, API,
 - A **run name** is supplied at job start and used as the key for all output files on the **Docker volume** and as the path parameter in `/analysis/results/{runName}/csv`.
 - **Surface type** determines the starting `input_0` file: `Torus` → `irred tori.m2`, `KleinBottle` → `irred kb.m2`, `ProjectivePlane` → `irred pp.m2`, `Custom` → a user-supplied path.
 - The **git submodule** at `m2/ext-shifting` is the default source of all M2 scripts. A **local mount** in `docker-compose.yml` overrides it for developer workflows. The app does not distinguish between these two cases at runtime.
+- The **analysis queue** is driven by `runQueue`, which calls `processQueueItem` for each item. `processQueueItem` emits an **`item_started` event** at the start and an **`item_done` event** at the end. The C# SSE pass-through forwards these events to the browser without parsing them. The **done file** written per item now includes `critRegions` data co-located with provenance metadata.
+- **`item_done` events** carry `critRegions` as a JSON array of objects whose shape mirrors the M2 `HashTable` fields (`regionShape`, `boundaryVertexCount`, `innerVertexCount`) defined in `m2/ext-shifting/UBIQUITOUS_LANGUAGE.md`.
 
 ---
 
