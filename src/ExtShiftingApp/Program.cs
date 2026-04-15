@@ -15,6 +15,8 @@ builder.Services.AddSingleton(new FileSystemService(m2RepoPath));
 builder.Services.AddSingleton(sp => new AnalysisJobManager(
     sp.GetRequiredService<M2ProcessRunner>(), m2RepoPath, outputPath));
 builder.Services.AddSingleton(m2RepoPath);
+builder.Services.AddSingleton(new OutputPath(outputPath));
+builder.Services.AddSingleton<DoneFileReader>();
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(
         new System.Text.Json.Serialization.JsonStringEnumConverter()));
