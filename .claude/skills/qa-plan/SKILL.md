@@ -164,7 +164,7 @@ Generates a structured QA plan as a GitHub issue by analysing recent git commits
 - Every checkbox must have an indented `  - Expected: <result>` line beneath it — Claude generates this from the diff; be as specific as the diff allows, fall back to a behavioural description if the diff is ambiguous
 - All API test steps must follow the two-line pattern: `curl ... -o response.json -w "%{http_code}"` then `echo "" && jq . response.json`, with an `Expected:` line stating the HTTP status and key response fields
 - curl commands go inside a fenced code block; the `echo. && jq . response.json` follow-up goes on its own line as inline code
-- curl JSON bodies use Windows CMD syntax: `-d "{\"key\":\"value\"}"` (double-quoted string, inner quotes backslash-escaped) — never single quotes
+- curl JSON bodies use Windows CMD syntax: `-d "{\"key\":\"value\"}"` (double-quoted string, inner quotes backslash-escaped) — never single quotes. also, CMD doesn't allow backslash line continuations.
 - All M2 test expressions must be runnable verbatim; expected output must be exact (not vague)
 - Regression Checks and Prerequisites do NOT get `Expected:` lines — they are self-explanatory
 - Cover every endpoint, UI interaction, and edge case visible in the diff
