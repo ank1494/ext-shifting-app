@@ -1,8 +1,6 @@
 # Backlog
 
-- **Queue analysis critical region output** `[small] [high]`: The queue-based analysis does not capture or persist the critical region data (topological type and boundary size) that the old batch analysis recorded. Spans the M2 computation layer and the C# surfacing layer.
-  - **Capture critical regions per item in M2 queue processor** `[small] [high]`: `processQueueItem` discards the `critRegions` return value from `analyzeIteration`; critical region data is not written to any output file.
-  - **Surface critical region data via C# API** `[small] [mid]`: Once the M2 queue processor writes critical region data to files, the C# layer does not read or expose it. Depends on the M2 capture item.
+- **Compile done triangulations into a results file** `[medium] [high]`: Once critical regions and other per-item data are captured in done files, provide a mechanism to compile all done triangulation data into a single human-readable file that makes it easy to observe and review the results of a completed analysis run.
 
 - **M2 output observability** `[medium] [mid]`: The app and M2 codebase provide limited visibility into computation state, timing, and failure modes during a run.
   - **Output line timestamps (M2 + app layer)** `[medium] [mid]`: M2 output lines carry no timing information, making it impossible to distinguish real-time streaming from a burst of output at process exit. This prevents verification that the buffered-output fix is actually working. Two timestamp sources are needed: M2-side (when the line was emitted) and C# side (when `OutputReceived` fired), surfaced through the SSE stream and displayed in the live log.

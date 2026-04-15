@@ -45,11 +45,19 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
+    public Task AnalyzeIteration_Torus7v_NoCritRegions_Passes() => RunScript("analyzeIteration-torus7v.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
     public Task QueueOps_ProcessItem_Moves_Passes() => RunScript("queueOps-processItem-moves.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
     public Task QueueOps_ProcessItem_Parent_Passes() => RunScript("queueOps-processItem-parent.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task QueueOps_ProcessItem_CritRegions_Passes() => RunScript("queueOps-processItem-critRegions.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
