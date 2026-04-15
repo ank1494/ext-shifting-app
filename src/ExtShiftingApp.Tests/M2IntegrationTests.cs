@@ -25,19 +25,11 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
-    public Task CriticalRegions_Tori_Passes() => RunScript("criticalRegions-tori.m2");
+    public Task CriticalRegions_Structure_Passes() => RunScript("criticalRegions-structure.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
-    public Task CriticalRegions_KleinBottle_Passes() => RunScript("criticalRegions-kb.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task CriticalRegions_Kb25_BadSplit_Passes() => RunScript("criticalRegions-kb25-badSplit.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task CriticalRegions_Kb25_ExemptSplits_Passes() => RunScript("criticalRegions-kb25-exemptSplits.m2");
+    public Task CriticalRegions_Kb25_Passes() => RunScript("criticalRegions-kb25.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
@@ -49,27 +41,11 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
-    public Task QueueOps_ProcessItem_Moves_Passes() => RunScript("queueOps-processItem-moves.m2");
+    public Task QueueOps_ProcessItem_Passes() => RunScript("queueOps-processItem.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
-    public Task QueueOps_ProcessItem_Parent_Passes() => RunScript("queueOps-processItem-parent.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task QueueOps_ProcessItem_CritRegions_Passes() => RunScript("queueOps-processItem-critRegions.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task QueueOps_ProcessItem_SplitFrom_Passes() => RunScript("queueOps-processItem-splitFrom.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task QueueOps_RunQueue_ItemCap_Passes() => RunScript("queueOps-runQueue-itemCap.m2");
-
-    [Fact]
-    [Trait("Category", "M2Integration")]
-    public Task QueueOps_RunQueue_Options_Passes() => RunScript("queueOps-runQueue-options.m2");
+    public Task QueueOps_RunQueue_Passes() => RunScript("queueOps-runQueue.m2");
 
     [Fact]
     [Trait("Category", "M2Integration")]
