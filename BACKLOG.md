@@ -15,6 +15,8 @@
 
 - **UI: resume controls and batch cap inputs** `[medium] [mid]`: The UI provides no way to resume a paused run or specify batch cap parameters (`itemCap`, `maxVertexCount`, `timeoutSeconds`). The backend endpoints exist; the gap is entirely in the frontend. (gh #54)
 
+- **CSV compilation from host done/ folder** `[medium] [mid]`: The CSV compilation currently works only from within the Docker container. There is no way to compile a CSV from a `done/` folder on the host machine, blocking users who run analyses on WSL. Should be a separate C# executable project that takes a `done/` folder path as input and outputs the CSV; the done-file→CSV logic should be extracted into a shared library so both the web app and the new executable can reuse it.
+
 - **Graphical interface** `[large] [low]`: The app has no graphical representations — input is text-only and output is list-only.
   - **Graphical complex input** `[large] [low]`: No mechanism for users to specify a simplicial complex by drawing it — input is text-only. Identified in the PRD as a valuable future feature; the data model should not preclude this approach.
   - **Output visualisation** `[medium] [low]`: The shifted complex is displayed as a list; there is no graphical rendering. Noted as future work in the PRD.
