@@ -1,6 +1,7 @@
 # Backlog
 
 - **Compile done triangulations into a results file** `[medium] [high]`: Once critical regions and other per-item data are captured in done files, provide a mechanism to compile all done triangulation data into a single human-readable file that makes it easy to observe and review the results of a completed analysis run.
+  - **Track split-from-parent provenance in done files** `[small] [high]`: Done files record which item was the parent but not which specific split from that parent produced the child triangulation. This gap makes it impossible to reconstruct exact split paths from the results.
 
 - **M2 output observability** `[medium] [mid]`: The app and M2 codebase provide limited visibility into computation state, timing, and failure modes during a run.
   - **Output line timestamps (M2 + app layer)** `[medium] [mid]`: M2 output lines carry no timing information, making it impossible to distinguish real-time streaming from a burst of output at process exit. This prevents verification that the buffered-output fix is actually working. Two timestamp sources are needed: M2-side (when the line was emitted) and C# side (when `OutputReceived` fired), surfaced through the SSE stream and displayed in the live log.
