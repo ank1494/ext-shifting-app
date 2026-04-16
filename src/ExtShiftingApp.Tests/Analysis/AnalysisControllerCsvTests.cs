@@ -83,7 +83,7 @@ public class AnalysisControllerCsvTests : IDisposable
         var csv = await _client.GetAsync("/analysis/results/my-run/csv")
             .ContinueWith(t => t.Result.Content.ReadAsStringAsync()).Unwrap();
 
-        Assert.Contains("largest_non_prefix_vertex_count,5", csv);
+        Assert.Contains("largest_non_prefix_vertex_count;5", csv);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class AnalysisControllerCsvTests : IDisposable
         var csv = await _client.GetAsync("/analysis/results/my-run/csv")
             .ContinueWith(t => t.Result.Content.ReadAsStringAsync()).Unwrap();
 
-        Assert.Contains("seq,parent,split_vertex,split_between,depth,vertex_count,critRegions,triangulation", csv);
+        Assert.Contains("seq;parent;split_vertex;split_between;depth;vertex_count;critRegions;triangulation", csv);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class AnalysisControllerCsvTests : IDisposable
 
         // Find header line index, then count data rows after it
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq,"));
+        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq;"));
         var dataRows = lines.Skip(headerIdx + 1).ToList();
         Assert.Equal(3, dataRows.Count);
     }
@@ -135,11 +135,11 @@ public class AnalysisControllerCsvTests : IDisposable
             .ContinueWith(t => t.Result.Content.ReadAsStringAsync()).Unwrap();
 
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq,"));
+        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq;"));
         var dataRow = lines[headerIdx + 1];
-        var cols = dataRow.Split(',');
+        var cols = dataRow.Split(';');
 
-        // seq,parent,split_vertex,split_between,...
+        // seq;parent;split_vertex;split_between;...
         Assert.Equal("", cols[2]); // split_vertex
         Assert.Equal("", cols[3]); // split_between (not quoted)
     }
@@ -179,12 +179,12 @@ public class AnalysisControllerCsvTests : IDisposable
         var csv = await _client.GetAsync("/analysis/results/empty-run/csv")
             .ContinueWith(t => t.Result.Content.ReadAsStringAsync()).Unwrap();
 
-        Assert.Contains("largest_non_prefix_vertex_count,0", csv);
-        Assert.Contains("critical_region_types,", csv);
-        Assert.Contains("seq,parent,split_vertex,split_between,depth,vertex_count,critRegions,triangulation", csv);
+        Assert.Contains("largest_non_prefix_vertex_count;0", csv);
+        Assert.Contains("critical_region_types;", csv);
+        Assert.Contains("seq;parent;split_vertex;split_between;depth;vertex_count;critRegions;triangulation", csv);
 
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq,"));
+        var headerIdx = Array.FindIndex(lines, l => l.StartsWith("seq;"));
         var dataRows = lines.Skip(headerIdx + 1).ToList();
         Assert.Empty(dataRows);
     }

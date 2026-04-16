@@ -119,14 +119,14 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
             .Select(r => (r.RegionShape, r.BoundaryVertexCount, r.InnerVertexCount))
             .Distinct()
             .ToList();
-        var critRegionTypes = string.Join("; ", distinctTriples.Select(t =>
+        var critRegionTypes = string.Join(", ", distinctTriples.Select(t =>
             $"{t.RegionShape}(boundary={t.BoundaryVertexCount}, inner={t.InnerVertexCount})"));
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"largest_non_prefix_vertex_count,{largestVertexCount}");
-        sb.AppendLine($"critical_region_types,\"{critRegionTypes}\"");
+        sb.AppendLine($"largest_non_prefix_vertex_count;{largestVertexCount}");
+        sb.AppendLine($"critical_region_types;{critRegionTypes}");
         sb.AppendLine();
-        sb.AppendLine("seq,parent,split_vertex,split_between,depth,vertex_count,critRegions,triangulation");
+        sb.AppendLine("seq;parent;split_vertex;split_between;depth;vertex_count;critRegions;triangulation");
 
         foreach (var item in items)
         {
@@ -134,9 +134,9 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
             var splitBetween = item.SplitFrom != null
                 ? $"vertex={item.SplitFrom.Vertex}, neighbors={item.SplitFrom.Neighbors}"
                 : "";
-            var critRegions = string.Join("; ", item.CritRegions.Select(r =>
+            var critRegions = string.Join(", ", item.CritRegions.Select(r =>
                 $"{r.RegionShape}(boundary={r.BoundaryVertexCount}, inner={r.InnerVertexCount})"));
-            sb.AppendLine($"{item.Seq},{item.Parent},{splitVertex},{splitBetween},{item.Depth},{item.VertexCount},{critRegions},{item.Triangulation}");
+            sb.AppendLine($"{item.Seq};{item.Parent};{splitVertex};{splitBetween};{item.Depth};{item.VertexCount};{critRegions};{item.Triangulation}");
         }
 
         return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
