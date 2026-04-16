@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ExtShiftingApp.Analysis;
 
 [ApiController]
-public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath) : ControllerBase
+public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath, OutputPath outputPath, DoneFileReader doneFileReader) : ControllerBase
 {
     private static readonly Dictionary<string, string> SurfaceInputFiles = new()
     {
@@ -107,30 +107,36 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     [HttpGet("/analysis/results/{runName}/csv")]
     public IActionResult Csv(string runName)
     {
-        var runDir = Path.Combine(m2RepoPath, "analysis output", runName);
+        var runDir = Path.Combine(outputPath.Value, runName);
         if (!Directory.Exists(runDir))
             return NotFound(new { error = $"No results found for run '{runName}'." });
 
-        var iterationDirs = Directory.GetDirectories(runDir, "iteration_*")
-            .Select(d => (dir: d, n: int.TryParse(Path.GetFileName(d).Replace("iteration_", ""), out var n) ? n : 0))
-            .Where(x => x.n > 0)
-            .OrderBy(x => x.n)
-            .ToList();
+        var items = doneFileReader.Read(runDir);
 
-        if (iterationDirs.Count == 0)
-            return NotFound(new { error = "No iteration results found." });
+        var largestVertexCount = items.Count > 0 ? items.Max(i => i.VertexCount) : 0;
+        var distinctTriples = items
+            .SelectMany(i => i.CritRegions)
+            .Select(r => (r.RegionShape, r.BoundaryVertexCount, r.InnerVertexCount))
+            .Distinct()
+            .ToList();
+        var critRegionTypes = string.Join(", ", distinctTriples.Select(t =>
+            $"{t.RegionShape}(boundary={t.BoundaryVertexCount}, inner={t.InnerVertexCount})"));
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("iteration,critical_regions,largest_non_prefix_vertices,converged");
+        sb.AppendLine($"largest_non_prefix_vertex_count;{largestVertexCount}");
+        sb.AppendLine($"critical_region_types;{critRegionTypes}");
+        sb.AppendLine();
+        sb.AppendLine("seq;parent;split_vertex;split_between;depth;vertex_count;critRegions;triangulation");
 
-        foreach (var (dir, n) in iterationDirs)
+        foreach (var item in items)
         {
-            var summaryPath = Path.Combine(dir, "Analysis Summary.txt");
-            if (!System.IO.File.Exists(summaryPath)) continue;
-
-            var summary = SummaryParser.Parse(n, System.IO.File.ReadAllText(summaryPath));
-            var regions = summary.CriticalRegions.Replace(",", ";"); // avoid CSV collision
-            sb.AppendLine($"{summary.Iteration},{regions},{summary.LargestNonPrefixVertices},{summary.Converged.ToString().ToLower()}");
+            var splitVertex = item.SplitFrom?.Vertex.ToString() ?? "";
+            var splitBetween = item.SplitFrom != null
+                ? $"vertex={item.SplitFrom.Vertex}, neighbors={item.SplitFrom.Neighbors}"
+                : "";
+            var critRegions = string.Join(", ", item.CritRegions.Select(r =>
+                $"{r.RegionShape}(boundary={r.BoundaryVertexCount}, inner={r.InnerVertexCount})"));
+            sb.AppendLine($"{item.Seq};{item.Parent};{splitVertex};{splitBetween};{item.Depth};{item.VertexCount};{critRegions};{item.Triangulation}");
         }
 
         return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
@@ -164,3 +170,4 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
 
 public record StartAnalysisRequest(string RunName, string? SurfaceType, string? CustomFilePath, BatchParameters? Batch = null);
 public record ResumeAnalysisRequest(string RunName, BatchParameters? Batch = null);
+public record OutputPath(string Value);
