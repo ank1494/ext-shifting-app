@@ -61,6 +61,14 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
+    public Task ExemptSplits_Tori_Passes() => RunScript("exemptSplits-tori.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task ExemptSplits_Kb_Passes() => RunScript("exemptSplits-kb.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
     public async Task M2LibChecks_PassAllUnitTests()
     {
         if (!Runner.IsAvailable()) return; // skip: M2 not available
