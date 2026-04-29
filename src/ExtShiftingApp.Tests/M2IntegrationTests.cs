@@ -69,6 +69,14 @@ public class M2IntegrationTests
 
     [Fact]
     [Trait("Category", "M2Integration")]
+    public Task Automorphisms_Tori_Passes() => RunScript("automorphisms-tori.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
+    public Task Automorphisms_Kb_Passes() => RunScript("automorphisms-kb.m2");
+
+    [Fact]
+    [Trait("Category", "M2Integration")]
     public async Task M2LibChecks_PassAllUnitTests()
     {
         if (!Runner.IsAvailable()) return; // skip: M2 not available
