@@ -1,10 +1,9 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ExtShiftingApp.Analysis;
 
 [ApiController]
-public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath, OutputPath outputPath, DoneFileReader doneFileReader) : ControllerBase
+public class AnalysisController(IAnalysisJob job, string m2RepoPath, OutputPath outputPath, DoneFileReader doneFileReader) : ControllerBase
 {
     private static readonly Dictionary<string, string> SurfaceInputFiles = new()
     {
@@ -14,7 +13,7 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     };
 
     [HttpPost("/analysis/start")]
-    public IActionResult Start([FromBody] StartAnalysisRequest request)
+    public async Task<IActionResult> Start([FromBody] StartAnalysisRequest request)
     {
         string inputFilePath;
 
@@ -34,12 +33,12 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
             return BadRequest(new { error = "Provide either surfaceType or customFilePath." });
         }
 
-        if (jobManager.RunExists(request.RunName))
+        if (job.RunExists(request.RunName))
             return Conflict(new { error = $"A run named '{request.RunName}' already exists." });
 
         try
         {
-            jobManager.Start(request.RunName, inputFilePath, request.Batch);
+            await job.StartAsync(request.RunName, inputFilePath, request.Batch);
             return Ok(new { started = true, runName = request.RunName });
         }
         catch (InvalidOperationException ex)
@@ -49,14 +48,14 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     }
 
     [HttpPost("/analysis/resume")]
-    public IActionResult Resume([FromBody] ResumeAnalysisRequest request)
+    public async Task<IActionResult> Resume([FromBody] ResumeAnalysisRequest request)
     {
-        if (!jobManager.RunExists(request.RunName))
+        if (!job.RunExists(request.RunName))
             return NotFound(new { error = $"No run named '{request.RunName}' exists." });
 
         try
         {
-            jobManager.Resume(request.RunName, request.Batch);
+            await job.ResumeAsync(request.RunName, request.Batch);
             return Ok(new { resumed = true, runName = request.RunName });
         }
         catch (InvalidOperationException ex)
@@ -66,14 +65,14 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     }
 
     [HttpPost("/analysis/stop")]
-    public IActionResult Stop()
+    public async Task<IActionResult> Stop()
     {
-        jobManager.Stop();
+        await job.StopAsync();
         return Ok(new { stopped = true });
     }
 
     [HttpGet("/analysis/status")]
-    public IActionResult Status() => Ok(jobManager.GetState());
+    public IActionResult Status() => Ok(job.GetSnapshot());
 
     [HttpGet("/analysis/stream")]
     public async Task Stream(CancellationToken ct)
@@ -82,26 +81,8 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
         Response.Headers["Cache-Control"] = "no-cache";
         Response.Headers["X-Accel-Buffering"] = "no";
 
-        // Replay existing log first
-        foreach (var line in jobManager.GetOutputLog())
+        await foreach (var line in job.OpenOutputStream().ReadAllAsync(ct))
             await WriteEvent(line, ct);
-
-        // Then subscribe to live output
-        if (jobManager.GetState().Status == JobStatus.Running)
-        {
-            var tcs = new TaskCompletionSource();
-            EventHandler<string> handler = async (_, line) =>
-            {
-                await WriteEvent(line, ct);
-                if (ct.IsCancellationRequested)
-                    tcs.TrySetResult();
-            };
-
-            jobManager.Subscribe(handler);
-            ct.Register(() => tcs.TrySetResult());
-            try { await tcs.Task; }
-            finally { jobManager.Unsubscribe(handler); }
-        }
     }
 
     [HttpGet("/analysis/results/{runName}/csv")]
@@ -147,7 +128,7 @@ public class AnalysisController(AnalysisJobManager jobManager, string m2RepoPath
     public IActionResult Results(int iteration, [FromQuery] string runName)
     {
         if (string.IsNullOrWhiteSpace(runName))
-            runName = jobManager.GetState().RunName ?? "";
+            runName = job.GetSnapshot().RunName ?? "";
 
         var summaryPath = Path.Combine(
             m2RepoPath, "analysis output", runName,

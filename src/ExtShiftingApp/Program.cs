@@ -7,13 +7,19 @@ var builder = WebApplication.CreateBuilder(args);
 
 var m2RepoPath = builder.Configuration["M2_REPO_PATH"] ?? "/m2/ext-shifting";
 builder.Services.AddSingleton<IProcessFactory, SystemProcessFactory>();
-builder.Services.AddSingleton(_ => new M2ProcessRunner(
+builder.Services.AddSingleton<IM2Runner>(sp => new M2ProcessRunner(
     new SystemProcessFactory(),
     workingDirectory: m2RepoPath));
 var outputPath = builder.Configuration["OUTPUT_PATH"] ?? "/output";
+builder.Services.AddSingleton<IJobStateStore>(new FileJobStateStore(outputPath));
+builder.Services.AddSingleton<IQueueStateReader, QueueStateReader>();
+builder.Services.AddSingleton<IAnalysisJob>(sp => new AnalysisJob(
+    sp.GetRequiredService<IM2Runner>(),
+    sp.GetRequiredService<IJobStateStore>(),
+    sp.GetRequiredService<IQueueStateReader>(),
+    outputPath,
+    m2RepoPath));
 builder.Services.AddSingleton(new FileSystemService(m2RepoPath));
-builder.Services.AddSingleton(sp => new AnalysisJobManager(
-    sp.GetRequiredService<M2ProcessRunner>(), m2RepoPath, outputPath));
 builder.Services.AddSingleton(m2RepoPath);
 builder.Services.AddSingleton(new OutputPath(outputPath));
 builder.Services.AddSingleton<DoneFileReader>();
