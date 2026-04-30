@@ -6,7 +6,7 @@ public record QueueState(int PendingCount, int DoneCount, int? CurrentItemDepth)
 /// Reads queue directory state (pending/ and done/ counts and front-item metadata)
 /// from a run output directory.
 /// </summary>
-public class QueueStateReader
+public class QueueStateReader : IQueueStateReader
 {
     public QueueState Read(string runDir)
     {

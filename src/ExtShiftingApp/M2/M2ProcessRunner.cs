@@ -1,6 +1,6 @@
 namespace ExtShiftingApp.M2;
 
-public class M2ProcessRunner(IProcessFactory processFactory, string workingDirectory)
+public class M2ProcessRunner(IProcessFactory processFactory, string workingDirectory) : IM2Runner
 {
     public async Task<M2Result> RunScriptAsync(
         string scriptPath,
