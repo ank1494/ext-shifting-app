@@ -171,4 +171,92 @@ public class AnalysisJobTests : IDisposable
         runner.Release(0);
         await job.WaitAsync();
     }
+
+    // --- Issue 111: OpenOutputStream Channel broadcast + replay buffer ---
+
+    [Fact]
+    public async Task OpenOutputStream_EmittedLines_ReachReader()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var job = Build(runner);
+        await job.StartAsync("my-run", "/input.m2");
+
+        var reader = job.OpenOutputStream();
+        runner.EmitLine("hello");
+        runner.Release(0);
+        await job.WaitAsync();
+
+        var lines = new List<string>();
+        await foreach (var line in reader.ReadAllAsync())
+            lines.Add(line);
+
+        Assert.Contains("hello", lines);
+    }
+
+    [Fact]
+    public async Task OpenOutputStream_LateJoin_ReceivesReplayThenLiveLines()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var job = Build(runner);
+        await job.StartAsync("my-run", "/input.m2");
+
+        runner.EmitLine("replay-line");
+
+        // late join after replay-line was emitted
+        var reader = job.OpenOutputStream();
+
+        runner.EmitLine("live-line");
+        runner.Release(0);
+        await job.WaitAsync();
+
+        var lines = new List<string>();
+        await foreach (var line in reader.ReadAllAsync())
+            lines.Add(line);
+
+        var replayIdx = lines.IndexOf("replay-line");
+        var liveIdx   = lines.IndexOf("live-line");
+        Assert.True(replayIdx >= 0, "replay-line should be present");
+        Assert.True(liveIdx   >= 0, "live-line should be present");
+        Assert.True(replayIdx < liveIdx, "replay-line should come before live-line");
+    }
+
+    [Fact]
+    public async Task OpenOutputStream_AfterJobComplete_ReturnsReplayAndCompletes()
+    {
+        var job = Build(new FakeM2Runner(exitCode: 0, output: "output-line"));
+        await job.StartAsync("my-run", "/input.m2");
+        await job.WaitAsync();
+
+        var reader = job.OpenOutputStream();
+
+        var lines = new List<string>();
+        await foreach (var line in reader.ReadAllAsync())
+            lines.Add(line);
+
+        Assert.Contains("output-line", lines);
+    }
+
+    [Fact]
+    public async Task OpenOutputStream_MultipleCallers_EachReceiveSameLines()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var job = Build(runner);
+        await job.StartAsync("my-run", "/input.m2");
+
+        var r1 = job.OpenOutputStream();
+        var r2 = job.OpenOutputStream();
+
+        runner.EmitLine("shared");
+        runner.Release(0);
+        await job.WaitAsync();
+
+        var lines1 = new List<string>();
+        await foreach (var l in r1.ReadAllAsync()) lines1.Add(l);
+
+        var lines2 = new List<string>();
+        await foreach (var l in r2.ReadAllAsync()) lines2.Add(l);
+
+        Assert.Contains("shared", lines1);
+        Assert.Contains("shared", lines2);
+    }
 }

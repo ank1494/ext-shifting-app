@@ -18,6 +18,8 @@ public class AnalysisJob : IAnalysisJob
     private Task _runTask = Task.CompletedTask;
     private bool _stopRequested;
     private bool _runPausedSeen;
+    private readonly List<string> _replayBuffer = [];
+    private readonly List<Channel<string>> _subscribers = [];
 
     public AnalysisJob(IM2Runner m2Runner, IJobStateStore stateStore, IQueueStateReader queueStateReader,
         string outputPath, string m2RepoPath)
@@ -47,6 +49,7 @@ public class AnalysisJob : IAnalysisJob
             _runName = runName;
             _stopRequested = false;
             _runPausedSeen = false;
+            _replayBuffer.Clear();
         }
         _runTask = RunCoreAsync(runName, inputFilePath, batch ?? new BatchParameters());
         return Task.CompletedTask;
@@ -72,6 +75,7 @@ public class AnalysisJob : IAnalysisJob
             _runName = runName;
             _stopRequested = false;
             _runPausedSeen = false;
+            _replayBuffer.Clear();
         }
         _stateStore.Save(MakeJobState());
         _runTask = RunCoreAsync(runName, null, batch ?? new BatchParameters());
@@ -107,8 +111,39 @@ public class AnalysisJob : IAnalysisJob
     public ChannelReader<string> OpenOutputStream()
     {
         var ch = Channel.CreateUnbounded<string>();
-        ch.Writer.Complete();
+        lock (_lock)
+        {
+            foreach (var line in _replayBuffer)
+                ch.Writer.TryWrite(line);
+
+            if (_status == JobStatus.Running)
+                _subscribers.Add(ch);
+            else
+                ch.Writer.Complete();
+        }
         return ch.Reader;
+    }
+
+    private void Broadcast(string line)
+    {
+        lock (_lock)
+        {
+            if (line.Contains("\"type\":\"run_paused\""))
+                _runPausedSeen = true;
+            _replayBuffer.Add(line);
+            foreach (var ch in _subscribers)
+                ch.Writer.TryWrite(line);
+        }
+    }
+
+    private void CompleteSubscribers()
+    {
+        lock (_lock)
+        {
+            foreach (var ch in _subscribers)
+                ch.Writer.TryComplete();
+            _subscribers.Clear();
+        }
     }
 
     private async Task RunCoreAsync(string runName, string? inputFilePath, BatchParameters batch)
@@ -121,7 +156,7 @@ public class AnalysisJob : IAnalysisJob
 
             var result = await _m2Runner.RunScriptAsync(
                 scriptPath,
-                onOutput: null,
+                onOutput: Broadcast,
                 scriptArgs: $"\"{configPath}\" {batchArgs}");
 
             lock (_lock)
@@ -147,6 +182,7 @@ public class AnalysisJob : IAnalysisJob
         }
         finally
         {
+            CompleteSubscribers();
             _stateStore.Save(MakeJobState());
         }
     }
