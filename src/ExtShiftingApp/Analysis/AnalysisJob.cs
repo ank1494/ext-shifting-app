@@ -10,6 +10,7 @@ public class AnalysisJob : IAnalysisJob
     private readonly IQueueStateReader _queueStateReader;
     private readonly string _outputPath;
     private readonly string _m2RepoPath;
+    private readonly TimeSpan _pollingInterval;
     private readonly object _lock = new();
 
     private JobStatus _status;
@@ -20,15 +21,17 @@ public class AnalysisJob : IAnalysisJob
     private bool _runPausedSeen;
     private readonly List<string> _replayBuffer = [];
     private readonly List<Channel<string>> _subscribers = [];
+    private QueueState? _lastPolledState;
 
     public AnalysisJob(IM2Runner m2Runner, IJobStateStore stateStore, IQueueStateReader queueStateReader,
-        string outputPath, string m2RepoPath)
+        string outputPath, string m2RepoPath, TimeSpan? pollingInterval = null)
     {
         _m2Runner = m2Runner;
         _stateStore = stateStore;
         _queueStateReader = queueStateReader;
         _outputPath = outputPath;
         _m2RepoPath = m2RepoPath;
+        _pollingInterval = pollingInterval ?? TimeSpan.FromSeconds(60);
 
         var saved = stateStore.TryLoad();
         if (saved?.Status is JobStatus.Paused or JobStatus.Failed)
@@ -49,6 +52,7 @@ public class AnalysisJob : IAnalysisJob
             _runName = runName;
             _stopRequested = false;
             _runPausedSeen = false;
+            _lastPolledState = null;
             _replayBuffer.Clear();
         }
         _runTask = RunCoreAsync(runName, inputFilePath, batch ?? new BatchParameters());
@@ -75,6 +79,7 @@ public class AnalysisJob : IAnalysisJob
             _runName = runName;
             _stopRequested = false;
             _runPausedSeen = false;
+            _lastPolledState = null;
             _replayBuffer.Clear();
         }
         _stateStore.Save(MakeJobState());
@@ -136,6 +141,25 @@ public class AnalysisJob : IAnalysisJob
         }
     }
 
+    private void Poll()
+    {
+        if (_runName is null) return;
+        var runDir = Path.Combine(_outputPath, _runName);
+        var current = _queueStateReader.Read(runDir);
+
+        lock (_lock)
+        {
+            if (_lastPolledState is not null &&
+                current.PendingCount == _lastPolledState.PendingCount &&
+                current.DoneCount    == _lastPolledState.DoneCount)
+                return;
+
+            _lastPolledState = current;
+        }
+
+        Broadcast($"EVENT:{{\"type\":\"queue_state\",\"pendingCount\":{current.PendingCount},\"doneCount\":{current.DoneCount}}}");
+    }
+
     private void CompleteSubscribers()
     {
         lock (_lock)
@@ -148,6 +172,7 @@ public class AnalysisJob : IAnalysisJob
 
     private async Task RunCoreAsync(string runName, string? inputFilePath, BatchParameters batch)
     {
+        using var pollTimer = new System.Threading.Timer(_ => Poll(), null, TimeSpan.Zero, _pollingInterval);
         try
         {
             var scriptPath = Path.Combine(_m2RepoPath, "scripts", "runQueue.m2");
@@ -182,6 +207,7 @@ public class AnalysisJob : IAnalysisJob
         }
         finally
         {
+            pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
             CompleteSubscribers();
             _stateStore.Save(MakeJobState());
         }

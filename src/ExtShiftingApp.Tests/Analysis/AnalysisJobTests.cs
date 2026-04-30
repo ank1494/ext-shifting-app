@@ -259,4 +259,128 @@ public class AnalysisJobTests : IDisposable
         Assert.Contains("shared", lines1);
         Assert.Contains("shared", lines2);
     }
+
+    // --- Issue 112: M2 process wiring + polling timer ---
+
+    [Fact]
+    public async Task M2EmitsRunPaused_GetSnapshot_ReturnsPaused()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var job = Build(runner);
+        await job.StartAsync("my-run", "/input.m2");
+
+        runner.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+        await job.WaitAsync();
+
+        Assert.Equal(JobStatus.Paused, job.GetSnapshot().Status);
+    }
+
+    [Fact]
+    public async Task StopAsync_WritesStopFile_DoesNotBlockOnM2Exit()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var job = Build(runner);
+        await job.StartAsync("my-run", "/input.m2");
+
+        await job.StopAsync();
+
+        Assert.True(File.Exists(Path.Combine(_outDir, "my-run", "stop_requested")),
+            "stop_requested file should be written");
+        Assert.False(job.WaitAsync().IsCompleted,
+            "WaitAsync should not complete until M2 exits");
+
+        runner.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+        await job.WaitAsync();
+    }
+
+    [Fact]
+    public async Task ResumeAsync_AfterStopAndM2Exit_DoesNotRaceWithTeardown()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var store = new MemoryJobStateStore();
+        var job = Build(runner, store);
+
+        await job.StartAsync("my-run", "/input.m2");
+        await job.StopAsync();
+
+        // Let M2 exit naturally → state transitions to Paused, RunCoreAsync finally completes
+        runner.Release(0, "EVENT:{\"type\":\"run_paused\"}");
+        await job.WaitAsync();
+
+        Assert.Equal(JobStatus.Paused, job.GetSnapshot().Status);
+
+        // ResumeAsync awaits priorTask (already complete) before launching new run
+        var resumeTask = job.ResumeAsync("my-run");
+        runner.Release(0);
+        await resumeTask;
+        await job.WaitAsync();
+
+        Assert.Equal(JobStatus.Complete, job.GetSnapshot().Status);
+    }
+
+    [Fact]
+    public async Task PollingTimer_EmitsQueueStateSSE_DuringRun()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var queueReader = new StubQueueStateReader();
+        queueReader.SetState(new QueueState(5, 2, 1));
+        var job = new AnalysisJob(runner, new MemoryJobStateStore(), queueReader, _outDir, _m2Dir,
+            pollingInterval: TimeSpan.FromMilliseconds(20));
+
+        await job.StartAsync("my-run", "/input.m2");
+        var outputReader = job.OpenOutputStream(); // subscribe after start so we're in _subscribers
+
+        await Task.Delay(80); // allow timer to fire
+
+        runner.Release(0);
+        await job.WaitAsync();
+
+        var lines = new List<string>();
+        await foreach (var l in outputReader.ReadAllAsync()) lines.Add(l);
+
+        Assert.Contains(lines, l => l.Contains("queue_state"));
+    }
+
+    [Fact]
+    public async Task PollingTimer_StopsAfterRunEnds()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var queueReader = new StubQueueStateReader();
+        queueReader.SetState(new QueueState(1, 0, null));
+        var job = new AnalysisJob(runner, new MemoryJobStateStore(), queueReader, _outDir, _m2Dir,
+            pollingInterval: TimeSpan.FromMilliseconds(20));
+
+        await job.StartAsync("my-run", "/input.m2");
+        var outputReader = job.OpenOutputStream();
+        await Task.Delay(80);
+        runner.Release(0);
+        await job.WaitAsync();
+
+        var countAtEnd = 0;
+        await foreach (var l in outputReader.ReadAllAsync())
+            if (l.Contains("queue_state")) countAtEnd++;
+
+        Assert.True(countAtEnd > 0, "at least one poll should have fired during the run");
+    }
+
+    [Fact]
+    public async Task GetSnapshot_DuringRun_ReflectsLiveQueueCountsFromReader()
+    {
+        var runner = new ControllableFakeM2Runner();
+        var queueReader = new StubQueueStateReader();
+        var job = new AnalysisJob(runner, new MemoryJobStateStore(), queueReader, _outDir, _m2Dir,
+            pollingInterval: TimeSpan.FromHours(1));
+
+        await job.StartAsync("my-run", "/input.m2");
+
+        queueReader.SetState(new QueueState(10, 5, 3));
+        var snap = job.GetSnapshot();
+
+        Assert.Equal(10, snap.PendingCount);
+        Assert.Equal(5, snap.DoneCount);
+        Assert.Equal(3, snap.CurrentItemDepth);
+
+        runner.Release(0);
+        await job.WaitAsync();
+    }
 }
