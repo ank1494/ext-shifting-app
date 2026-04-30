@@ -1,8 +1,6 @@
 using System.Net;
 using ExtShiftingApp.Analysis;
 using ExtShiftingApp.Files;
-using ExtShiftingApp.M2;
-using ExtShiftingApp.Tests.M2;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -19,14 +17,13 @@ public class AnalysisControllerCsvTests : IDisposable
     {
         Directory.CreateDirectory(_outputPath);
         Directory.CreateDirectory(_m2Dir);
-        var fake = new FakeProcessFactory(exitCode: 0, output: "", error: "");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
                 services.AddSingleton(new FileSystemService(_m2Dir));
-                services.AddSingleton<IProcessFactory>(fake);
-                services.AddSingleton(_ => new M2ProcessRunner(fake, _m2Dir));
-                services.AddSingleton(_ => new AnalysisJobManager(new M2ProcessRunner(fake, _m2Dir), _m2Dir, _outputPath));
+                services.AddSingleton<IAnalysisJob>(_ => new AnalysisJob(
+                    new FakeM2Runner(), new MemoryJobStateStore(), new StubQueueStateReader(),
+                    _outputPath, _m2Dir));
                 services.AddSingleton(_m2Dir);
                 services.AddSingleton(new OutputPath(_outputPath));
                 services.AddSingleton<DoneFileReader>();
