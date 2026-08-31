@@ -24,8 +24,10 @@ RUN apt-get update && \
 
 # Build app
 WORKDIR /build
-COPY src/ ./
-RUN dotnet publish ExtShiftingApp/ExtShiftingApp.csproj -c Release -o /app
+COPY src/ExtShiftingApp/ExtShiftingApp.csproj ./ExtShiftingApp/
+RUN dotnet restore ExtShiftingApp/ExtShiftingApp.csproj
+COPY src/ExtShiftingApp/ ./ExtShiftingApp/
+RUN dotnet publish ExtShiftingApp/ExtShiftingApp.csproj -c Release -o /app --no-restore
 
 # Copy M2 code (submodule)
 COPY m2/ /m2/
