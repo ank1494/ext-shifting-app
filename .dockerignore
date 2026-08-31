@@ -1,0 +1,9 @@
+.git/
+.idea/
+.claude/
+output/
+docs/
+**/*.csv
+**/*.md
+**/bin/
+**/obj/
